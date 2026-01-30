@@ -7,7 +7,7 @@ OpenAI/Anthropic compatible proxy for Kiro API (Claude models via AWS CodeWhispe
 ### 1. Add the proxies repo to ploinky
 
 ```bash
-ploinky add repo proxies
+ploinky enable repo proxies
 ```
 
 ### 2. Start the agent
@@ -22,7 +22,9 @@ ploinky start kiro-gateway
 ploinky cli kiro-gateway
 ```
 
-This will display a device code and URL. Open the URL in your browser and enter the code to authenticate.
+This will start the authentication flow. Follow the prompts to authenticate with your Kiro account.
+
+The gateway will automatically start once credentials are configured.
 
 ## Configuration
 
@@ -34,7 +36,7 @@ To set a custom key:
 
 ```bash
 ploinky var PROXY_API_KEY your-secret-key
-ploinky restart
+ploinky restart kiro-gateway
 ```
 
 ## Usage with opencode
@@ -57,6 +59,7 @@ Edit `~/.config/opencode/opencode.json` and add the Kiro provider:
       },
       "models": {
         "auto": {
+          "id": "auto-kiro",
           "name": "Claude (Auto)"
         },
         "claude-sonnet-4.5": {
@@ -84,3 +87,40 @@ opencode
 ```
 
 Use `Ctrl+K` to switch models and select a Kiro model.
+
+## Available Models
+
+| Model ID | Description |
+|----------|-------------|
+| `auto-kiro` | Automatically selects the best model |
+| `claude-sonnet-4.5` | Claude Sonnet 4.5 |
+| `claude-sonnet-4` | Claude Sonnet 4 |
+| `claude-opus-4.5` | Claude Opus 4.5 |
+| `claude-3.7-sonnet` | Claude 3.7 Sonnet |
+| `claude-haiku-4.5` | Claude Haiku 4.5 (fast) |
+
+## Troubleshooting
+
+### Gateway not starting
+
+Check the container logs:
+
+```bash
+podman logs $(podman ps -q --filter "name=kiro-gateway")
+```
+
+### Authentication issues
+
+Re-authenticate:
+
+```bash
+ploinky cli kiro-gateway
+```
+
+### Connection refused in opencode
+
+Ensure the gateway is running and listening on port 8000:
+
+```bash
+curl -H "Authorization: Bearer kiro-gateway-key" http://localhost:8000/v1/models
+```
