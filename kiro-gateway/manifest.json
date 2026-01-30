@@ -1,11 +1,8 @@
 {
     "container": "python:3.11-slim",
     "agent": "python /app/main.py",
-    "cli": "kiro-cli login --license pro --identity-provider https://view.awsapps.com/start --region us-east-1 --use-device-flow",
+    "cli": "bash /code/cli.sh",
     "about": "Kiro Gateway - OpenAI/Anthropic compatible proxy for Kiro API (Claude models via AWS CodeWhisperer)",
-    "ports": [
-        "0.0.0.0:8000:8000"
-    ],
     "env": {
         "PROXY_API_KEY": {
             "required": false,
@@ -14,6 +11,9 @@
     },
     "profiles": {
         "default": {
+            "ports": [
+                "0.0.0.0:8000:8000"
+            ],
             "install": "apt-get update && apt-get install -y --no-install-recommends git curl unzip && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
         }
     }
