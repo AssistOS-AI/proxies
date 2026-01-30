@@ -30,11 +30,11 @@ if [ ! -f "$KIRO_DB" ]; then
     echo ""
 fi
 
-# Create .env with kiro-cli db path
-cat > /app/.env << EOF
+# Create .env in /code (CWD when python runs via ploinky)
+cat > /code/.env << EOF
 KIRO_CLI_DB_FILE=/root/.local/share/kiro-cli/data.sqlite3
 EOF
-[ -n "$PROXY_API_KEY" ] && echo "PROXY_API_KEY=$PROXY_API_KEY" >> /app/.env
+[ -n "$PROXY_API_KEY" ] && echo "PROXY_API_KEY=$PROXY_API_KEY" >> /code/.env
 
 # Install python dependencies
 cd /app
