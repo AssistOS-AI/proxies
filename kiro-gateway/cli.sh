@@ -1,6 +1,9 @@
 #!/bin/bash
 # CLI for Kiro Gateway authentication
 
+# Ensure kiro-cli is in PATH
+export PATH="$PATH:/root/.local/bin:/usr/local/bin"
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
