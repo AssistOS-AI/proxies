@@ -1,6 +1,6 @@
 {
     "container": "python:3.11-slim",
-    "agent": "python /app/main.py",
+    "agent": "bash /code/startup.sh",
     "cli": "bash /code/cli.sh",
     "about": "Kiro Gateway - OpenAI/Anthropic compatible proxy for Kiro API (Claude models via AWS CodeWhisperer)",
     "env": {
