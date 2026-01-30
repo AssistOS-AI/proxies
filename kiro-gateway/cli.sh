@@ -9,6 +9,25 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Wait for kiro-cli to be installed (install.sh may still be running)
+if ! command -v kiro-cli &> /dev/null; then
+    echo -e "${YELLOW}Waiting for kiro-cli to be installed...${NC}"
+    for i in {1..60}; do
+        if command -v kiro-cli &> /dev/null; then
+            echo -e "${GREEN}kiro-cli is ready!${NC}"
+            break
+        fi
+        printf "."
+        sleep 2
+    done
+    echo ""
+    
+    if ! command -v kiro-cli &> /dev/null; then
+        echo -e "${NC}Error: kiro-cli not found. Install may have failed.${NC}"
+        exit 1
+    fi
+fi
+
 # Configuration
 MAX_WAIT_SECONDS=60
 CHECK_INTERVAL=2
