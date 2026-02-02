@@ -67,8 +67,10 @@ echo -e "${YELLOW}Starting Antigravity OAuth login...${NC}"
 echo -e "${YELLOW}Note: The OAuth callback uses port 51121${NC}"
 echo ""
 
+# Ensure we're in a valid directory (fixes "getcwd: No such file or directory")
+cd /tmp 2>/dev/null || cd /
+
 mkdir -p "$AUTH_DIR"
-cd "$AUTH_DIR"
 "$CLI_PROXY_BIN" -config "$AUTH_DIR/config.yaml" -antigravity-login "$@"
 login_status=$?
 
