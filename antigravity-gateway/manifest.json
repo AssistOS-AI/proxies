@@ -1,0 +1,24 @@
+{
+    "container": "debian:bookworm-slim",
+    "agent": "bash /code/startup.sh",
+    "cli": "bash /code/cli.sh",
+    "about": "Antigravity Gateway - OpenAI/Gemini compatible proxy for Antigravity subscription (Gemini models via Google OAuth)",
+    "profiles": {
+        "default": {
+            "env": {
+                "PROXY_API_KEY": {
+                    "required": false,
+                    "default": "antigravity-gateway-key"
+                },
+                "PROXY_PORT": {
+                    "required": false,
+                    "default": "8001"
+                }
+            },
+            "ports": [
+                "0.0.0.0:8001:8001"
+            ],
+            "install": "apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
+        }
+    }
+}

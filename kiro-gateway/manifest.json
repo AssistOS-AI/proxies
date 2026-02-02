@@ -3,14 +3,14 @@
     "agent": "bash /code/startup.sh",
     "cli": "bash /code/cli.sh",
     "about": "Kiro Gateway - OpenAI/Anthropic compatible proxy for Kiro API (Claude models via AWS CodeWhisperer)",
-    "env": {
-        "PROXY_API_KEY": {
-            "required": false,
-            "default": "kiro-gateway-key"
-        }
-    },
     "profiles": {
         "default": {
+            "env": {
+                "PROXY_API_KEY": {
+                    "required": false,
+                    "default": "kiro-gateway-key"
+                }
+            },
             "ports": [
                 "0.0.0.0:8000:8000"
             ],
