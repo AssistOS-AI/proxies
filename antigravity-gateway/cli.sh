@@ -2,7 +2,8 @@
 # CLI for Antigravity Gateway authentication
 
 CLI_PROXY_BIN="/app/cli-proxy-api"
-AUTH_DIR="/root/.cli-proxy-api"
+# Use WORKSPACE_PATH (already mounted by ploinky) to persist credentials
+AUTH_DIR="${WORKSPACE_PATH:-.}/.cli-proxy-api"
 GATEWAY_PORT="${PROXY_PORT:-8001}"
 
 # Colors
@@ -45,11 +46,12 @@ check_server() {
 
 # Function to check if credentials exist
 has_credentials() {
-    # Check for antigravity auth files in the auth directory
+    # Check for antigravity auth files (format: antigravity-<email>.json)
+    ls "${AUTH_DIR}"/antigravity-*.json 2>/dev/null | head -1 | grep -q . && return 0
+    # Legacy locations
     [ -f "${AUTH_DIR}/antigravity.json" ] && return 0
     [ -f "${AUTH_DIR}/auths/antigravity.json" ] && return 0
-    # Also check the default CLIProxyAPI auth locations
-    ls "${AUTH_DIR}"/auths/*.json 2>/dev/null | grep -q antigravity && return 0
+    ls "${AUTH_DIR}"/auths/antigravity*.json 2>/dev/null | head -1 | grep -q . && return 0
     return 1
 }
 
@@ -65,8 +67,9 @@ echo -e "${YELLOW}Starting Antigravity OAuth login...${NC}"
 echo -e "${YELLOW}Note: The OAuth callback uses port 51121${NC}"
 echo ""
 
+mkdir -p "$AUTH_DIR"
 cd "$AUTH_DIR"
-"$CLI_PROXY_BIN" --auth-dir "$AUTH_DIR" --antigravity-login "$@"
+"$CLI_PROXY_BIN" -config "$AUTH_DIR/config.yaml" -antigravity-login "$@"
 login_status=$?
 
 if [ $login_status -eq 0 ]; then

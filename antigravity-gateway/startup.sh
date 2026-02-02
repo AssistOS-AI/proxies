@@ -2,9 +2,11 @@
 # Startup script that waits for credentials before starting the server
 
 CLI_PROXY_BIN="/app/cli-proxy-api"
-AUTH_DIR="/root/.cli-proxy-api"
+# Use WORKSPACE_PATH (already mounted by ploinky) to persist credentials
+AUTH_DIR="${WORKSPACE_PATH:-.}/.cli-proxy-api"
 CONFIG_FILE="${AUTH_DIR}/config.yaml"
 GATEWAY_PORT="${PROXY_PORT:-8001}"
+API_KEY="${PROXY_API_KEY:-antigravity-gateway-key}"
 CHECK_INTERVAL=5
 
 # Colors
@@ -14,13 +16,12 @@ NC='\033[0m'
 
 # Function to check if Antigravity credentials are configured
 has_credentials() {
-    # Check for antigravity auth files
+    # Check for antigravity auth files (format: antigravity-<email>.json)
+    ls "${AUTH_DIR}"/antigravity-*.json 2>/dev/null | head -1 | grep -q . && return 0
+    # Legacy locations
     [ -f "${AUTH_DIR}/antigravity.json" ] && return 0
     [ -f "${AUTH_DIR}/auths/antigravity.json" ] && return 0
-    # Check for any antigravity-related auth file
-    ls "${AUTH_DIR}"/auths/*.json 2>/dev/null | grep -qi antigravity && return 0
-    # Also check if any OAuth tokens exist
-    [ -d "${AUTH_DIR}/auths" ] && [ "$(ls -A ${AUTH_DIR}/auths 2>/dev/null)" ] && return 0
+    ls "${AUTH_DIR}"/auths/antigravity*.json 2>/dev/null | head -1 | grep -q . && return 0
     return 1
 }
 
@@ -30,21 +31,37 @@ while [ ! -f "$CLI_PROXY_BIN" ]; do
     sleep 2
 done
 
-# Update config with API key if provided
-if [ -n "$PROXY_API_KEY" ]; then
-    # Create or update config with API key
-    if [ -f "$CONFIG_FILE" ]; then
-        # Update the api-keys in the config
-        if grep -q "^api-keys:" "$CONFIG_FILE"; then
-            sed -i "s/^api-keys: \[\]/api-keys:\n  - \"${PROXY_API_KEY}\"/" "$CONFIG_FILE"
-        fi
-    fi
-fi
+# Generate config file with current environment variables
+mkdir -p "$AUTH_DIR"
+cat > "$CONFIG_FILE" << EOF
+# Antigravity Gateway Configuration (auto-generated)
+host: ""
+port: ${GATEWAY_PORT}
 
-# Update port in config if needed
-if [ -f "$CONFIG_FILE" ] && [ "$GATEWAY_PORT" != "8317" ]; then
-    sed -i "s/^port: .*/port: ${GATEWAY_PORT}/" "$CONFIG_FILE"
-fi
+# Authentication directory
+auth-dir: "${AUTH_DIR}"
+
+# API keys for authentication
+api-keys:
+  - "${API_KEY}"
+
+# Enable debug logging
+debug: false
+
+# Request retry on failures
+request-retry: 3
+
+# Quota exceeded behavior
+quota-exceeded:
+  switch-project: true
+  switch-preview-model: true
+
+# Routing strategy
+routing:
+  strategy: "round-robin"
+EOF
+
+echo "Configuration generated at ${CONFIG_FILE}"
 
 # Wait for credentials if not present
 if ! has_credentials; then
@@ -67,4 +84,4 @@ fi
 
 # Start the CLIProxyAPI server
 echo "Starting Antigravity Gateway on port ${GATEWAY_PORT}..."
-exec "$CLI_PROXY_BIN" --config "$CONFIG_FILE" --auth-dir "$AUTH_DIR" --port "$GATEWAY_PORT"
+exec "$CLI_PROXY_BIN" -config "$CONFIG_FILE"

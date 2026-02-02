@@ -16,7 +16,8 @@
                 }
             },
             "ports": [
-                "0.0.0.0:8001:8001"
+                "0.0.0.0:8001:8001",
+                "0.0.0.0:51121:51121"
             ],
             "install": "apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
         }
