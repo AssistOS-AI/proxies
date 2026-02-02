@@ -18,13 +18,19 @@ ploinky start kiro-gateway
 
 ### 3. Authenticate with Kiro
 
+**Option A: Web Interface (Recommended)**
+
+Visit the landing page at `http://localhost:8000` (or your configured domain) and click "Sign in with AWS".
+
+**Option B: CLI**
+
 ```bash
 ploinky cli kiro-gateway
 ```
 
-This will start the authentication flow. Follow the prompts to authenticate with your Kiro account.
+This will start the AWS SSO device flow. Follow the prompts to authenticate.
 
-The gateway will automatically start once credentials are configured.
+The backend API will automatically start once credentials are configured.
 
 ## Configuration
 
@@ -98,6 +104,12 @@ Use `Ctrl+K` to switch models and select a Kiro model.
 | `claude-opus-4.5` | Claude Opus 4.5 |
 | `claude-3.7-sonnet` | Claude 3.7 Sonnet |
 | `claude-haiku-4.5` | Claude Haiku 4.5 (fast) |
+
+## Persistence
+
+Credentials are stored in `/shared/kiro-cli/` (symlinked from `/root/.local/share/kiro-cli/`).
+
+This ensures credentials survive container restarts. The `/shared` directory is mounted from the host's `workspace/shared/`.
 
 ## Troubleshooting
 

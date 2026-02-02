@@ -4,6 +4,17 @@ set -e
 # Add local bin to PATH
 export PATH="$PATH:/root/.local/bin"
 
+# Set up persistent storage for kiro-cli credentials
+# Use /shared (mounted from workspace/shared) so credentials survive container restarts
+mkdir -p /shared/kiro-cli
+mkdir -p /root/.local/share
+
+# Create symlink for kiro-cli data directory
+if [ ! -L "/root/.local/share/kiro-cli" ]; then
+    rm -rf /root/.local/share/kiro-cli 2>/dev/null || true
+    ln -sf /shared/kiro-cli /root/.local/share/kiro-cli
+fi
+
 # Install kiro-cli if not exists
 if ! command -v kiro-cli &> /dev/null; then
     echo "Installing kiro-cli..."

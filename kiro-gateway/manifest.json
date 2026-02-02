@@ -14,7 +14,7 @@
             "ports": [
                 "0.0.0.0:8000:8000"
             ],
-            "install": "apt-get update && apt-get install -y --no-install-recommends git curl unzip && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
+            "install": "apt-get update && apt-get install -y --no-install-recommends git curl unzip expect && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
         }
     }
 }

@@ -1,40 +1,35 @@
 #!/bin/bash
-# Startup script that waits for credentials before starting the server
-
-KIRO_DB="/root/.local/share/kiro-cli/data.sqlite3"
-CHECK_INTERVAL=5
+# Startup script for Kiro Gateway with landing page
 
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Function to check if credentials are configured
-has_credentials() {
-    [ -f "$KIRO_DB" ] && return 0
-    [ -n "$REFRESH_TOKEN" ] && return 0
-    [ -f "$KIRO_CREDS_FILE" ] && return 0
-    return 1
-}
+# Ensure Python and kiro-cli are ready
+echo -e "${YELLOW}Starting Kiro Gateway...${NC}"
 
-# Wait for credentials if not present
-if ! has_credentials; then
-    echo ""
-    echo -e "${YELLOW}================================================${NC}"
-    echo -e "${YELLOW}  Waiting for Kiro credentials...${NC}"
-    echo -e "${YELLOW}================================================${NC}"
-    echo -e "${YELLOW}  Run: ploinky cli kiro-gateway${NC}"
-    echo -e "${YELLOW}  to authenticate with your Kiro account${NC}"
-    echo -e "${YELLOW}================================================${NC}"
-    echo ""
-    
-    while ! has_credentials; do
-        sleep $CHECK_INTERVAL
+# Ensure persistent storage symlink exists
+mkdir -p /data/kiro-cli
+mkdir -p /root/.local/share
+if [ ! -L "/root/.local/share/kiro-cli" ]; then
+    rm -rf /root/.local/share/kiro-cli 2>/dev/null || true
+    ln -sf /data/kiro-cli /root/.local/share/kiro-cli
+fi
+
+# Wait for kiro-cli to be available (install.sh may still be running)
+if ! command -v kiro-cli &> /dev/null; then
+    echo "Waiting for kiro-cli to be installed..."
+    for i in {1..60}; do
+        if command -v kiro-cli &> /dev/null; then
+            echo -e "${GREEN}kiro-cli is ready!${NC}"
+            break
+        fi
+        printf "."
+        sleep 2
     done
-    
-    echo -e "${GREEN}Credentials detected! Starting server...${NC}"
     echo ""
 fi
 
-# Start the Python server
-exec python /app/main.py
+# Start the landing page server (handles both browser and API access)
+exec python3 /code/landing.py

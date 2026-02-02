@@ -1,87 +1,37 @@
 #!/bin/bash
-# Startup script that waits for credentials before starting the server
 
-CLI_PROXY_BIN="/app/cli-proxy-api"
-# Use WORKSPACE_PATH (already mounted by ploinky) to persist credentials
-AUTH_DIR="${WORKSPACE_PATH:-.}/.cli-proxy-api"
-CONFIG_FILE="${AUTH_DIR}/config.yaml"
-GATEWAY_PORT="${PROXY_PORT:-8001}"
-API_KEY="${PROXY_API_KEY:-antigravity-gateway-key}"
-CHECK_INTERVAL=5
+APP_DIR="/app"
+export PORT="${PORT:-8001}"
 
-# Colors
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+echo -e "\033[1;33mStarting Antigravity Claude Proxy on port $PORT...\033[0m"
 
-# Function to check if Antigravity credentials are configured
-has_credentials() {
-    # Check for antigravity auth files (format: antigravity-<email>.json)
-    ls "${AUTH_DIR}"/antigravity-*.json 2>/dev/null | head -1 | grep -q . && return 0
-    # Legacy locations
-    [ -f "${AUTH_DIR}/antigravity.json" ] && return 0
-    [ -f "${AUTH_DIR}/auths/antigravity.json" ] && return 0
-    ls "${AUTH_DIR}"/auths/antigravity*.json 2>/dev/null | head -1 | grep -q . && return 0
-    return 1
-}
+cd "$APP_DIR"
 
-# Wait for binary to be available
-while [ ! -f "$CLI_PROXY_BIN" ]; do
-    echo "Waiting for CLIProxyAPI binary..."
-    sleep 2
-done
+# Ensure data directories exist
+mkdir -p /data/accounts
+mkdir -p /data/config
+mkdir -p /root/.config/antigravity-proxy
 
-# Generate config file with current environment variables
-mkdir -p "$AUTH_DIR"
-cat > "$CONFIG_FILE" << EOF
-# Antigravity Gateway Configuration (auto-generated)
-host: ""
-port: ${GATEWAY_PORT}
-
-# Authentication directory
-auth-dir: "${AUTH_DIR}"
-
-# API keys for authentication
-api-keys:
-  - "${API_KEY}"
-
-# Enable debug logging
-debug: false
-
-# Request retry on failures
-request-retry: 3
-
-# Quota exceeded behavior
-quota-exceeded:
-  switch-project: true
-  switch-preview-model: true
-
-# Routing strategy
-routing:
-  strategy: "round-robin"
-EOF
-
-echo "Configuration generated at ${CONFIG_FILE}"
-
-# Wait for credentials if not present
-if ! has_credentials; then
-    echo ""
-    echo -e "${YELLOW}================================================${NC}"
-    echo -e "${YELLOW}  Waiting for Antigravity credentials...${NC}"
-    echo -e "${YELLOW}================================================${NC}"
-    echo -e "${YELLOW}  Run: ploinky cli antigravity-gateway${NC}"
-    echo -e "${YELLOW}  to authenticate with your Antigravity account${NC}"
-    echo -e "${YELLOW}================================================${NC}"
-    echo ""
-    
-    while ! has_credentials; do
-        sleep $CHECK_INTERVAL
-    done
-    
-    echo -e "${GREEN}Credentials detected! Starting server...${NC}"
-    echo ""
+# Ensure accounts.json symlink exists
+if [ ! -L "/root/.config/antigravity-proxy/accounts.json" ]; then
+    rm -f /root/.config/antigravity-proxy/accounts.json 2>/dev/null || true
+    touch /data/accounts/accounts.json
+    ln -sf /data/accounts/accounts.json /root/.config/antigravity-proxy/accounts.json
 fi
 
-# Start the CLIProxyAPI server
-echo "Starting Antigravity Gateway on port ${GATEWAY_PORT}..."
-exec "$CLI_PROXY_BIN" -config "$CONFIG_FILE"
+# Create symlink for persistent data if not exists
+if [ ! -L "$APP_DIR/data" ]; then
+    rm -rf "$APP_DIR/data" 2>/dev/null || true
+    ln -sf /data "$APP_DIR/data"
+fi
+
+# Log OAuth configuration
+if [ -n "$OAUTH_REDIRECT_URI" ]; then
+    echo -e "\033[0;36mOAuth Redirect URI: $OAUTH_REDIRECT_URI\033[0m"
+fi
+
+echo -e "\033[0;32mWeb Dashboard available at configured URL\033[0m"
+echo ""
+
+# Start the proxy server
+exec node src/index.js

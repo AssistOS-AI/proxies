@@ -1,99 +1,51 @@
 #!/bin/bash
 set -e
 
-# Install CLIProxyAPI for Antigravity OAuth support
+APP_DIR="/app"
+REPO_URL="https://github.com/AssistOS-AI/antigravity-claude-proxy.git"
 
-CLI_PROXY_DIR="/app"
-CLI_PROXY_BIN="${CLI_PROXY_DIR}/cli-proxy-api"
-AUTH_DIR="/root/.cli-proxy-api"
-
-# Detect architecture
-ARCH=$(uname -m)
-case "$ARCH" in
-    x86_64)
-        ARCH="amd64"
-        ;;
-    aarch64|arm64)
-        ARCH="arm64"
-        ;;
-    *)
-        echo "Unsupported architecture: $ARCH"
-        exit 1
-        ;;
-esac
-
-# Create directories
-mkdir -p "$CLI_PROXY_DIR"
-mkdir -p "$AUTH_DIR"
-
-# Download latest CLIProxyAPI release
-echo "Downloading CLIProxyAPI for linux_${ARCH}..."
-RELEASE_URL=$(curl -s https://api.github.com/repos/router-for-me/CLIProxyAPI/releases/latest | \
-    grep "browser_download_url.*linux_${ARCH}.tar.gz" | \
-    head -1 | \
-    cut -d '"' -f 4)
-
-if [ -z "$RELEASE_URL" ]; then
-    echo "Error: Could not find release for linux_${ARCH}"
-    exit 1
-fi
-
-echo "Downloading from: $RELEASE_URL"
-curl -fsSL "$RELEASE_URL" | tar -xz -C "$CLI_PROXY_DIR"
-
-# Find the binary (it might be in a subdirectory)
-if [ ! -f "$CLI_PROXY_BIN" ]; then
-    # Look for the binary in extracted files
-    FOUND_BIN=$(find "$CLI_PROXY_DIR" -name "cli-proxy-api" -type f | head -1)
-    if [ -n "$FOUND_BIN" ]; then
-        mv "$FOUND_BIN" "$CLI_PROXY_BIN"
-    fi
-fi
-
-chmod +x "$CLI_PROXY_BIN"
-
-# Verify installation
-if [ -f "$CLI_PROXY_BIN" ]; then
-    echo "CLIProxyAPI installed successfully"
-    "$CLI_PROXY_BIN" --version 2>/dev/null || echo "Binary ready"
+# Clone antigravity-claude-proxy if not exists, or pull latest
+if [ ! -d "$APP_DIR" ]; then
+    echo "Cloning antigravity-claude-proxy from forked repo..."
+    git clone "$REPO_URL" "$APP_DIR"
 else
-    echo "Error: CLIProxyAPI binary not found"
-    exit 1
+    echo "Updating antigravity-claude-proxy..."
+    cd "$APP_DIR"
+    git pull origin main || true
 fi
 
-# Create default config file
-cat > "${AUTH_DIR}/config.yaml" << 'EOF'
-# Antigravity Gateway Configuration
-host: ""
-port: 8001
+cd "$APP_DIR"
 
-# Authentication directory
-auth-dir: "/root/.cli-proxy-api"
+# Install dependencies
+echo "Installing dependencies..."
+npm install
 
-# API keys for authentication (set via PROXY_API_KEY env var)
-api-keys: []
+# Create data directory for persistent storage
+# Use /shared (mounted from workspace/shared) so credentials survive container restarts
+mkdir -p /shared/antigravity/accounts
+mkdir -p /shared/antigravity/config
 
-# Enable debug logging
-debug: false
+# Create the .config directory structure for accounts.json
+mkdir -p /root/.config/antigravity-proxy
 
-# Request retry on failures
-request-retry: 3
+# Link accounts config to persistent storage
+if [ ! -L "/root/.config/antigravity-proxy/accounts.json" ]; then
+    rm -f /root/.config/antigravity-proxy/accounts.json 2>/dev/null || true
+    touch /shared/antigravity/accounts/accounts.json
+    ln -sf /shared/antigravity/accounts/accounts.json /root/.config/antigravity-proxy/accounts.json
+fi
 
-# Quota exceeded behavior
-quota-exceeded:
-  switch-project: true
-  switch-preview-model: true
-
-# Routing strategy
-routing:
-  strategy: "round-robin"
-EOF
-
-echo "Configuration created at ${AUTH_DIR}/config.yaml"
 echo ""
 echo "================================================"
 echo "  Installation Complete"
 echo "================================================"
-echo "  Run: ploinky cli antigravity-gateway"
-echo "  to authenticate with your Antigravity account"
+echo "  The proxy will start on port ${PORT:-8001}"
+echo "  Web Dashboard: https://antigravity.axiologic.dev"
+echo ""
+echo "  To add an account (Manual Authorization):"
+echo "    1. Open the Web Dashboard"
+echo "    2. Click 'Add Account'"
+echo "    3. Complete Google sign-in"
+echo "    4. Copy the failed localhost URL"
+echo "    5. Paste it back in the dashboard"
 echo "================================================"
