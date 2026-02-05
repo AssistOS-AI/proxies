@@ -1,0 +1,5 @@
+# Sensitive files - DO NOT commit
+setEnv.sh
+.api_key
+*.pem
+*.key
