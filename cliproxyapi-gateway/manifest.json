@@ -1,0 +1,31 @@
+{
+    "container": "docker.io/library/golang:1.24-alpine",
+    "agent": "sh /code/startup.sh",
+    "cli": "sh /code/cli.sh",
+    "about": "CLIProxyAPI - Unified AI proxy supporting Claude, Gemini, Codex, Antigravity, Kimi, Qwen, iFlow via OAuth and API keys",
+    "profiles": {
+        "default": {
+            "env": {
+                "PROXY_API_KEY": {
+                    "required": false,
+                    "default": "cliproxyapi-key"
+                },
+                "MANAGEMENT_PASSWORD": {
+                    "required": false,
+                    "default": "management-secret"
+                },
+                "PORT": {
+                    "required": false,
+                    "default": "8317"
+                }
+            },
+            "ports": [
+                "0.0.0.0:8317:8317",
+                "0.0.0.0:1455:1455",
+                "0.0.0.0:54545:54545",
+                "0.0.0.0:51121:51121"
+            ],
+            "install": "apk add --no-cache git curl bash tzdata && bash /code/install.sh"
+        }
+    }
+}
