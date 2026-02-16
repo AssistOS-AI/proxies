@@ -1,0 +1,14 @@
+{
+  "name": "soul-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Soul Gateway — LLM proxy with Soul Family policies, full content logging, and operations dashboard",
+  "main": "src/index.mjs",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}
