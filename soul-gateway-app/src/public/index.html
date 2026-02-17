@@ -101,7 +101,6 @@
                       <th>Model</th>
                       <th>Latency</th>
                       <th>Tokens</th>
-                      <th>Cost</th>
                       <th>Status</th>
                     </tr>
                   </thead>
@@ -119,7 +118,6 @@
                               <div class="w-36 truncate" x-text="log.resolved_model || log.requested_model || '-'"></div>
                               <div class="w-20 text-right" x-text="log.latency_ms ? log.latency_ms + 'ms' : '-'"></div>
                               <div class="w-20 text-right" x-text="log.total_tokens || '-'"></div>
-                              <div class="w-20 text-right" x-text="log.total_cost ? '$' + Number(log.total_cost).toFixed(4) : '-'"></div>
                               <div class="w-32 flex gap-1 flex-wrap">
                                 <span x-show="log.error_type" class="badge badge-error badge-xs" x-text="log.error_type"></span>
                                 <span x-show="log.blocked_by_blacklist" class="badge badge-warning badge-xs">Blocked</span>
@@ -186,35 +184,34 @@
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div class="card bg-base-100 shadow">
               <div class="card-body">
-                <h2 class="card-title text-sm">Cost by Family</h2>
-                <canvas x-ref="familyCostChart" height="200"></canvas>
+                <h2 class="card-title text-sm">Tokens by Family</h2>
+                <canvas x-ref="familyTokenChart" height="200"></canvas>
               </div>
             </div>
             <div class="card bg-base-100 shadow">
               <div class="card-body">
-                <h2 class="card-title text-sm">Cost by Model</h2>
-                <canvas x-ref="modelCostChart" height="200"></canvas>
+                <h2 class="card-title text-sm">Tokens by Model</h2>
+                <canvas x-ref="modelTokenChart" height="200"></canvas>
               </div>
             </div>
             <div class="card bg-base-100 shadow lg:col-span-2">
               <div class="card-body">
-                <h2 class="card-title text-sm">Cost Trend</h2>
-                <canvas x-ref="costTrendChart" height="150"></canvas>
+                <h2 class="card-title text-sm">Token Usage Trend</h2>
+                <canvas x-ref="tokenTrendChart" height="150"></canvas>
               </div>
             </div>
             <div class="card bg-base-100 shadow lg:col-span-2">
               <div class="card-body p-0">
                 <table class="table table-sm">
-                  <thead><tr><th>Family</th><th>Requests</th><th>Tokens</th><th>Input Cost</th><th>Output Cost</th><th>Total Cost</th></tr></thead>
+                  <thead><tr><th>Family</th><th>Requests</th><th>Prompt Tokens</th><th>Completion Tokens</th><th>Total Tokens</th></tr></thead>
                   <tbody>
                     <template x-for="r in familyCosts" :key="r.family_name">
                       <tr>
                         <td x-text="r.family_name"></td>
                         <td x-text="r.request_count"></td>
-                        <td x-text="Number(r.total_tokens || 0).toLocaleString()"></td>
-                        <td x-text="'$' + Number(r.input_cost || 0).toFixed(4)"></td>
-                        <td x-text="'$' + Number(r.output_cost || 0).toFixed(4)"></td>
-                        <td class="font-bold" x-text="'$' + Number(r.total_cost || 0).toFixed(4)"></td>
+                        <td x-text="Number(r.prompt_tokens || 0).toLocaleString()"></td>
+                        <td x-text="Number(r.completion_tokens || 0).toLocaleString()"></td>
+                        <td class="font-bold" x-text="Number(r.total_tokens || 0).toLocaleString()"></td>
                       </tr>
                     </template>
                   </tbody>
@@ -313,10 +310,6 @@
                 </select>
               </div>
               <div class="form-control"><label class="label">Mode</label><select class="select select-bordered" x-model="form.mode"><option>deep</option><option>fast</option></select></div>
-              <div class="grid grid-cols-2 gap-2">
-                <div class="form-control"><label class="label">Input Price ($/1M)</label><input type="number" step="0.01" class="input input-bordered" x-model.number="form.input_price"></div>
-                <div class="form-control"><label class="label">Output Price ($/1M)</label><input type="number" step="0.01" class="input input-bordered" x-model.number="form.output_price"></div>
-              </div>
               <div class="modal-action">
                 <button class="btn btn-ghost" @click="showCreate = false; editing = null">Cancel</button>
                 <button class="btn btn-primary" @click="save()" x-text="editing ? 'Save' : 'Create'"></button>
@@ -327,15 +320,13 @@
           <div class="card bg-base-100 shadow">
             <div class="card-body p-0">
               <table class="table table-sm">
-                <thead><tr><th>Name</th><th>Upstream</th><th>Mode</th><th>Input $/1M</th><th>Output $/1M</th><th>Enabled</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Name</th><th>Upstream</th><th>Mode</th><th>Enabled</th><th>Actions</th></tr></thead>
                 <tbody>
                   <template x-for="m in models" :key="m.id">
                     <tr :class="{'opacity-40': !m.is_enabled}">
                       <td x-text="m.name" class="font-mono"></td>
                       <td x-text="m.upstream_model" class="font-mono"></td>
                       <td><span class="badge badge-sm" :class="m.mode === 'deep' ? 'badge-primary' : 'badge-secondary'" x-text="m.mode"></span></td>
-                      <td x-text="'$' + m.input_price"></td>
-                      <td x-text="'$' + m.output_price"></td>
                       <td><input type="checkbox" class="toggle toggle-sm" :checked="m.is_enabled" @change="toggle(m)"></td>
                       <td class="flex gap-1">
                         <button class="btn btn-ghost btn-xs" @click="edit(m)">Edit</button>

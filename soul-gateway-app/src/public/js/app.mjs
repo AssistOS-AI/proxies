@@ -36,7 +36,7 @@ function app() {
     page: 'logs',
     pages: [
       { id: 'logs', label: 'Logs' },
-      { id: 'costs', label: 'Costs' },
+      { id: 'costs', label: 'Usage' },
       { id: 'errors', label: 'Errors' },
       { id: 'families', label: 'Families' },
       { id: 'models', label: 'Models' },
@@ -183,7 +183,7 @@ function costsPage() {
     },
 
     renderFamilyChart(data) {
-      const ctx = this.$refs.familyCostChart;
+      const ctx = this.$refs.familyTokenChart;
       if (!ctx) return;
       if (this._charts.family) this._charts.family.destroy();
       this._charts.family = new Chart(ctx, {
@@ -191,8 +191,8 @@ function costsPage() {
         data: {
           labels: data.map(r => r.family_name || 'unknown'),
           datasets: [{
-            label: 'Total Cost ($)',
-            data: data.map(r => Number(r.total_cost || 0)),
+            label: 'Total Tokens',
+            data: data.map(r => Number(r.total_tokens || 0)),
             backgroundColor: CHART_COLORS,
           }]
         },
@@ -201,7 +201,7 @@ function costsPage() {
     },
 
     renderModelChart(data) {
-      const ctx = this.$refs.modelCostChart;
+      const ctx = this.$refs.modelTokenChart;
       if (!ctx) return;
       if (this._charts.model) this._charts.model.destroy();
       this._charts.model = new Chart(ctx, {
@@ -209,7 +209,7 @@ function costsPage() {
         data: {
           labels: data.map(r => r.resolved_model || 'unknown'),
           datasets: [{
-            data: data.map(r => Number(r.total_cost || 0)),
+            data: data.map(r => Number(r.total_tokens || 0)),
             backgroundColor: CHART_COLORS,
           }]
         },
@@ -218,11 +218,10 @@ function costsPage() {
     },
 
     renderTrendChart(data) {
-      const ctx = this.$refs.costTrendChart;
+      const ctx = this.$refs.tokenTrendChart;
       if (!ctx) return;
       if (this._charts.trend) this._charts.trend.destroy();
 
-      // Group by family
       const families = [...new Set(data.map(r => r.family_name))];
       const periods = [...new Set(data.map(r => r.period))].sort();
 
@@ -234,7 +233,7 @@ function costsPage() {
             label: fam || 'unknown',
             data: periods.map(p => {
               const row = data.find(r => r.period === p && r.family_name === fam);
-              return row ? Number(row.total_cost) : 0;
+              return row ? Number(row.total_tokens) : 0;
             }),
             borderColor: CHART_COLORS[i % CHART_COLORS.length],
             fill: false,
@@ -333,7 +332,7 @@ function modelsPage() {
     upstreamModels: [],
     showCreate: false,
     editing: null,
-    form: { name: '', upstream_model: '', mode: 'deep', input_price: 0, output_price: 0 },
+    form: { name: '', upstream_model: '', mode: 'deep' },
 
     async init() {
       [this.models, this.upstreamModels] = await Promise.all([
@@ -344,7 +343,7 @@ function modelsPage() {
 
     edit(m) {
       this.editing = m;
-      this.form = { name: m.name, upstream_model: m.upstream_model, mode: m.mode, input_price: Number(m.input_price), output_price: Number(m.output_price) };
+      this.form = { name: m.name, upstream_model: m.upstream_model, mode: m.mode };
       this.showCreate = true;
     },
 
@@ -356,7 +355,7 @@ function modelsPage() {
       }
       this.showCreate = false;
       this.editing = null;
-      this.form = { name: '', upstream_model: '', mode: 'deep', input_price: 0, output_price: 0 };
+      this.form = { name: '', upstream_model: '', mode: 'deep' };
       this.models = await api.get('/api/v1/models');
     },
 
