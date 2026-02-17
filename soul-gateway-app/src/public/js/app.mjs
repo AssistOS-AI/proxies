@@ -330,11 +330,17 @@ function familiesPage() {
 function modelsPage() {
   return {
     models: [],
+    upstreamModels: [],
     showCreate: false,
     editing: null,
     form: { name: '', upstream_model: '', mode: 'deep', input_price: 0, output_price: 0 },
 
-    async init() { this.models = await api.get('/api/v1/models'); },
+    async init() {
+      [this.models, this.upstreamModels] = await Promise.all([
+        api.get('/api/v1/models'),
+        api.get('/api/v1/models/upstream'),
+      ]);
+    },
 
     edit(m) {
       this.editing = m;

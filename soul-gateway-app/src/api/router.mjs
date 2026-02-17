@@ -32,6 +32,9 @@ export async function apiRouter(req, res, pathname, query) {
   }
 
   // Models
+  if (pathname === '/api/v1/models/upstream') {
+    if (method === 'GET') return handleModels.upstreamModels(req, res);
+  }
   if (pathname === '/api/v1/models') {
     if (method === 'GET') return handleModels.list(req, res, query);
     if (method === 'POST') return handleModels.create(req, res);
