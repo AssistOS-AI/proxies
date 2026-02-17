@@ -1,6 +1,6 @@
 export const config = {
   port: parseInt(process.env.PORT || '8042', 10),
-  upstreamUrl: process.env.UPSTREAM_URL || 'http://localhost:8317',
+  upstreamUrl: process.env.UPSTREAM_URL || 'https://proxy.axiologic.dev',
 
   // PostgreSQL (uses pg defaults: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
   pgSchema: 'soul_gateway',

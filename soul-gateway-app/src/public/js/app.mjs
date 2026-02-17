@@ -44,7 +44,9 @@ function app() {
       { id: 'blacklist', label: 'Blacklist' },
     ],
     wsConnected: false,
+    streamMode: '', // 'ws', 'sse', or ''
     ws: null,
+    sse: null,
 
     init() {
       // Read page from URL hash
@@ -59,23 +61,54 @@ function app() {
       window.location.hash = p;
     },
 
+    _handleLogMessage(raw) {
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'log') {
+          window.dispatchEvent(new CustomEvent('soul-log', { detail: msg.data }));
+        }
+      } catch {}
+    },
+
     connectWs() {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const ws = new WebSocket(`${proto}//${location.host}/ws/v1/logs`);
-      ws.onopen = () => { this.wsConnected = true; };
+      let opened = false;
+      ws.onopen = () => {
+        opened = true;
+        this.wsConnected = true;
+        this.streamMode = 'ws';
+      };
       ws.onclose = () => {
+        this.ws = null;
+        if (!opened) {
+          // WebSocket never connected — fall back to SSE
+          this.connectSse();
+          return;
+        }
         this.wsConnected = false;
+        this.streamMode = '';
         setTimeout(() => this.connectWs(), 3000);
       };
-      ws.onmessage = (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'log') {
-            window.dispatchEvent(new CustomEvent('soul-log', { detail: msg.data }));
-          }
-        } catch {}
-      };
+      ws.onmessage = (e) => this._handleLogMessage(e.data);
       this.ws = ws;
+    },
+
+    connectSse() {
+      if (this.sse) { this.sse.close(); this.sse = null; }
+      const sse = new EventSource('/api/v1/logs/stream');
+      sse.onopen = () => {
+        this.wsConnected = true;
+        this.streamMode = 'sse';
+      };
+      sse.onerror = () => {
+        this.wsConnected = false;
+        this.streamMode = '';
+        // EventSource auto-reconnects, but if it keeps failing
+        // we mark offline and let it retry on its own
+      };
+      sse.onmessage = (e) => this._handleLogMessage(e.data);
+      this.sse = sse;
     },
   };
 }

@@ -130,8 +130,9 @@ async function seedDefaults() {
   if (models.length === 0) {
     log.info('Seeding model configs...');
     const defaultModels = [
-      { name: 'soul-deep', upstream: 'claude-opus-4.6', mode: 'deep', inputPrice: 5, outputPrice: 25 },
-      { name: 'soul-fast', upstream: 'claude-sonnet-4.5', mode: 'fast', inputPrice: 1, outputPrice: 5 },
+      { name: 'axiologic-deep', upstream: 'claude-opus-4.6', mode: 'deep', inputPrice: 5, outputPrice: 25 },
+      { name: 'axiologic-fast', upstream: 'claude-sonnet-4.5', mode: 'fast', inputPrice: 1, outputPrice: 5 },
+      { name: 'axiologic-ultra', upstream: 'gpt-5.3-codex', mode: 'deep', inputPrice: 3, outputPrice: 15 },
       { name: 'claude-opus-4.6', upstream: 'claude-opus-4.6', mode: 'deep', inputPrice: 5, outputPrice: 25 },
       { name: 'claude-sonnet-4.5', upstream: 'claude-sonnet-4.5', mode: 'fast', inputPrice: 1, outputPrice: 5 },
       { name: 'gpt-5.3-codex', upstream: 'gpt-5.3-codex', mode: 'deep', inputPrice: 3, outputPrice: 15 },

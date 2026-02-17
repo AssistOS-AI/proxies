@@ -6,6 +6,7 @@ import { handleBlacklist } from './blacklist.mjs';
 import { handleLogs } from './logs.mjs';
 import { handleMetrics } from './metrics.mjs';
 import { handleExport } from './export.mjs';
+import { handleSseStream } from '../ws/log-stream.mjs';
 
 /**
  * Route management API requests.
@@ -66,6 +67,9 @@ export async function apiRouter(req, res, pathname, query) {
   }
 
   // Logs
+  if (pathname === '/api/v1/logs/stream') {
+    if (method === 'GET') return handleSseStream(req, res, query);
+  }
   if (pathname === '/api/v1/logs') {
     if (method === 'GET') return handleLogs.list(req, res, query);
   }

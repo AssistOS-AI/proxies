@@ -25,6 +25,11 @@ export function handleUpgrade(req, socket, head) {
     .update(wsKey + WS_MAGIC)
     .digest('base64');
 
+  // Disable any Node.js timeouts on this socket
+  socket.setTimeout(0);
+  socket.setNoDelay(true);
+  socket.setKeepAlive(true, 30000);
+
   // Complete the handshake
   socket.write(
     'HTTP/1.1 101 Switching Protocols\r\n' +
@@ -35,6 +40,11 @@ export function handleUpgrade(req, socket, head) {
   );
 
   const ws = createWsHelper(socket);
+
+  // Process any leftover data from the HTTP upgrade
+  if (head && head.length > 0) {
+    socket.emit('data', head);
+  }
 
   if (pathname === '/ws/v1/logs') {
     handleLogStream(ws, query);
@@ -94,7 +104,10 @@ function createWsHelper(socket) {
       }
       if (decoded.opcode === 0x09) { // ping
         socket.write(encodeFrame(decoded.payload, 0x0A)); // pong
-        return;
+        continue;
+      }
+      if (decoded.opcode === 0x0A) { // pong — ignore
+        continue;
       }
       if (decoded.opcode === 0x01 || decoded.opcode === 0x02) { // text or binary
         if (ws.onMessage) {
@@ -105,11 +118,17 @@ function createWsHelper(socket) {
   });
 
   socket.on('close', () => {
+    if (!ws.alive) {
+      // Error already marked dead — still need to run cleanup
+      if (ws.onClose) { const cb = ws.onClose; ws.onClose = null; cb(); }
+      return;
+    }
     ws.alive = false;
-    if (ws.onClose) ws.onClose();
+    if (ws.onClose) { const cb = ws.onClose; ws.onClose = null; cb(); }
   });
 
-  socket.on('error', () => {
+  socket.on('error', (err) => {
+    log.warn('WebSocket socket error', { error: err.message });
     ws.alive = false;
   });
 

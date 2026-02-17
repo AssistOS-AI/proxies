@@ -16,6 +16,11 @@ export function createAppServer() {
     const { pathname, query } = parseUrl(req);
 
     try {
+      // Skip WebSocket upgrade requests — handled by the 'upgrade' event
+      if (req.headers.upgrade && req.headers.upgrade.toLowerCase() === 'websocket') {
+        return;
+      }
+
       // Health check
       if (pathname === '/health' && req.method === 'GET') {
         return sendJson(res, { status: 'ok', uptime: process.uptime() });
@@ -44,6 +49,27 @@ export function createAppServer() {
         return serveDashboard(req, res, '/');
       }
 
+      // WebSocket test page
+      if (pathname === '/ws-test') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`<!DOCTYPE html><html><body>
+<h2>WebSocket Test</h2>
+<div id="log" style="white-space:pre;font-family:monospace;"></div>
+<script>
+function log(msg){ document.getElementById('log').textContent += new Date().toISOString().substr(11,12)+' '+msg+'\\n'; }
+function connect(){
+  log('Connecting...');
+  const ws = new WebSocket('ws://'+location.host+'/ws/v1/logs');
+  ws.onopen = () => log('OPEN');
+  ws.onclose = (e) => { log('CLOSE code='+e.code+' reason='+e.reason+' clean='+e.wasClean); setTimeout(connect,3000); };
+  ws.onerror = (e) => log('ERROR '+e.type);
+  ws.onmessage = (e) => log('MSG: '+e.data.substring(0,100));
+}
+connect();
+</script></body></html>`);
+        return;
+      }
+
       sendError(res, 404, 'Not found');
     } catch (err) {
       log.error('Unhandled error', { path: pathname, error: err.message, stack: err.stack });
@@ -55,6 +81,8 @@ export function createAppServer() {
 
   // WebSocket upgrade
   server.on('upgrade', (req, socket, head) => {
+    // Remove Node.js request timeout on upgraded sockets
+    req.setTimeout(0);
     handleUpgrade(req, socket, head);
   });
 
