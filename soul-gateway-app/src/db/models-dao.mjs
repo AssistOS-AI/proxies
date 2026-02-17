@@ -54,3 +54,8 @@ export async function toggleModel(id) {
   );
   return rows[0] || null;
 }
+
+export async function deleteModel(id) {
+  const { rows } = await query('DELETE FROM model_configs WHERE id = $1 RETURNING *', [id]);
+  return rows[0] || null;
+}

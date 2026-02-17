@@ -302,8 +302,8 @@
           </div>
           <dialog class="modal" :class="{'modal-open': showCreate}">
             <div class="modal-box">
-              <h3 class="font-bold text-lg">Add Model</h3>
-              <div class="form-control"><label class="label">Name</label><input type="text" class="input input-bordered" x-model="form.name"></div>
+              <h3 class="font-bold text-lg" x-text="editing ? 'Edit Model' : 'Add Model'"></h3>
+              <div class="form-control"><label class="label">Name</label><input type="text" class="input input-bordered" x-model="form.name" :disabled="!!editing"></div>
               <div class="form-control"><label class="label">Upstream Model</label><input type="text" class="input input-bordered" x-model="form.upstream_model"></div>
               <div class="form-control"><label class="label">Mode</label><select class="select select-bordered" x-model="form.mode"><option>deep</option><option>fast</option></select></div>
               <div class="grid grid-cols-2 gap-2">
@@ -311,11 +311,11 @@
                 <div class="form-control"><label class="label">Output Price ($/1M)</label><input type="number" step="0.01" class="input input-bordered" x-model.number="form.output_price"></div>
               </div>
               <div class="modal-action">
-                <button class="btn btn-ghost" @click="showCreate = false">Cancel</button>
-                <button class="btn btn-primary" @click="create()">Create</button>
+                <button class="btn btn-ghost" @click="showCreate = false; editing = null">Cancel</button>
+                <button class="btn btn-primary" @click="save()" x-text="editing ? 'Save' : 'Create'"></button>
               </div>
             </div>
-            <div class="modal-backdrop" @click="showCreate = false"></div>
+            <div class="modal-backdrop" @click="showCreate = false; editing = null"></div>
           </dialog>
           <div class="card bg-base-100 shadow">
             <div class="card-body p-0">
@@ -330,7 +330,10 @@
                       <td x-text="'$' + m.input_price"></td>
                       <td x-text="'$' + m.output_price"></td>
                       <td><input type="checkbox" class="toggle toggle-sm" :checked="m.is_enabled" @change="toggle(m)"></td>
-                      <td></td>
+                      <td class="flex gap-1">
+                        <button class="btn btn-ghost btn-xs" @click="edit(m)">Edit</button>
+                        <button class="btn btn-error btn-xs" @click="remove(m)">Delete</button>
+                      </td>
                     </tr>
                   </template>
                 </tbody>

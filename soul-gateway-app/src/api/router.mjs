@@ -39,6 +39,7 @@ export async function apiRouter(req, res, pathname, query) {
   params = matchPath('/api/v1/models/:id', pathname);
   if (params) {
     if (method === 'PUT') return handleModels.update(req, res, params);
+    if (method === 'DELETE') return handleModels.remove(req, res, params);
   }
   params = matchPath('/api/v1/models/:id/toggle', pathname);
   if (params) {

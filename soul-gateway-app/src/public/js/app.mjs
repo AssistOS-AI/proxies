@@ -331,14 +331,32 @@ function modelsPage() {
   return {
     models: [],
     showCreate: false,
+    editing: null,
     form: { name: '', upstream_model: '', mode: 'deep', input_price: 0, output_price: 0 },
 
     async init() { this.models = await api.get('/api/v1/models'); },
 
-    async create() {
-      await api.post('/api/v1/models', this.form);
+    edit(m) {
+      this.editing = m;
+      this.form = { name: m.name, upstream_model: m.upstream_model, mode: m.mode, input_price: Number(m.input_price), output_price: Number(m.output_price) };
+      this.showCreate = true;
+    },
+
+    async save() {
+      if (this.editing) {
+        await api.put(`/api/v1/models/${this.editing.id}`, this.form);
+      } else {
+        await api.post('/api/v1/models', this.form);
+      }
       this.showCreate = false;
+      this.editing = null;
       this.form = { name: '', upstream_model: '', mode: 'deep', input_price: 0, output_price: 0 };
+      this.models = await api.get('/api/v1/models');
+    },
+
+    async remove(m) {
+      if (!confirm(`Delete model "${m.name}"?`)) return;
+      await api.del(`/api/v1/models/${m.id}`);
       this.models = await api.get('/api/v1/models');
     },
 

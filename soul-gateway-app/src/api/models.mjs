@@ -49,4 +49,10 @@ export const handleModels = {
     if (!model) return sendError(res, 404, 'Model not found');
     sendJson(res, model);
   },
+
+  async remove(req, res, params) {
+    const model = await dao.deleteModel(params.id);
+    if (!model) return sendError(res, 404, 'Model not found');
+    sendJson(res, { ok: true });
+  },
 };
