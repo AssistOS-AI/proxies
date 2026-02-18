@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     encrypted_key BYTEA NOT NULL,
     key_type TEXT DEFAULT 'permanent',
     label TEXT,
+    key_hint TEXT,
     expires_at TIMESTAMPTZ,
     is_revoked BOOLEAN DEFAULT false,
     last_used_at TIMESTAMPTZ,

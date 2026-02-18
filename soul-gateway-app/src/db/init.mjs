@@ -46,6 +46,9 @@ export async function initDb() {
   const ddl = readFileSync(schemaPath, 'utf8');
   await p.query(ddl);
 
+  // Migrations
+  await migrate(p);
+
   // Create monthly partitions (current month + next 3 months)
   await ensurePartitions();
 
@@ -53,6 +56,13 @@ export async function initDb() {
   await seedDefaults();
 
   log.info('Database initialization complete');
+}
+
+async function migrate(p) {
+  const sql = `SET search_path TO ${config.pgSchema}, public`;
+  await p.query(sql);
+  // Add key_hint column to api_keys if missing
+  await p.query(`ALTER TABLE api_keys ADD COLUMN IF NOT EXISTS key_hint TEXT`);
 }
 
 async function ensurePartitions() {

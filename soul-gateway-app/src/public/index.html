@@ -381,11 +381,12 @@
           <div class="card bg-base-100 shadow">
             <div class="card-body p-0">
               <table class="table table-sm">
-                <thead><tr><th>Label</th><th>Family</th><th>Type</th><th>Last Used</th><th>Created</th><th>Status</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Label</th><th>Key</th><th>Family</th><th>Type</th><th>Last Used</th><th>Created</th><th>Status</th><th>Actions</th></tr></thead>
                 <tbody>
                   <template x-for="k in keys" :key="k.id">
                     <tr :class="{'opacity-40': k.is_revoked}">
                       <td x-text="k.label || '-'"></td>
+                      <td class="font-mono text-xs opacity-60" x-text="k.key_hint || '-'"></td>
                       <td x-text="k.family_name"></td>
                       <td><span class="badge badge-sm" x-text="k.key_type"></span></td>
                       <td x-text="k.last_used_at ? formatDate(k.last_used_at) : 'Never'"></td>
