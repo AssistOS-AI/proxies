@@ -2,6 +2,9 @@ export const config = {
   port: parseInt(process.env.PORT || '8042', 10),
   upstreamUrl: process.env.UPSTREAM_URL || 'https://proxy.axiologic.dev',
 
+  // Dashboard auth
+  dashboardPassword: process.env.DASHBOARD_PASSWORD || '',
+
   // PostgreSQL (uses pg defaults: PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE)
   pgSchema: 'soul_gateway',
 

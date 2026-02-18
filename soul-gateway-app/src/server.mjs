@@ -5,6 +5,7 @@ import { pipeline } from './pipeline/pipeline.mjs';
 import { apiRouter } from './api/router.mjs';
 import { handleUpgrade } from './ws/upgrade.mjs';
 import { serveDashboard } from './dashboard/serve.mjs';
+import { isAuthenticated, handleLogin, handleLogout, redirectToLogin } from './dashboard/auth.mjs';
 import { config } from './config.mjs';
 
 const log = createLogger('server');
@@ -33,6 +34,19 @@ export function createAppServer() {
       if (pathname === '/v1/models' && req.method === 'GET') {
         // Handled by API router (lists models for the authenticated family)
         return await apiRouter(req, res, pathname, query);
+      }
+
+      // Dashboard auth
+      if (pathname === '/login') return handleLogin(req, res);
+      if (pathname === '/logout') return handleLogout(req, res);
+
+      // Protect dashboard and management API
+      if (config.dashboardPassword && !isAuthenticated(req)) {
+        // API calls from dashboard get 401 (so frontend can redirect)
+        if (pathname.startsWith('/api/v1/')) {
+          return sendError(res, 401, 'Authentication required');
+        }
+        return redirectToLogin(res);
       }
 
       // Management API

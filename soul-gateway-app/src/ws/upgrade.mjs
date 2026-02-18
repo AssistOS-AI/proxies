@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { createLogger } from '../utils/logger.mjs';
 import { handleLogStream } from './log-stream.mjs';
 import { handleSoulStream } from './soul-stream.mjs';
+import { isAuthenticated } from '../dashboard/auth.mjs';
 
 const log = createLogger('ws');
 const WS_MAGIC = '258EAFA5-E914-47DA-95CA-5BAB0DC85B11';
@@ -13,6 +14,13 @@ export function handleUpgrade(req, socket, head) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const pathname = url.pathname;
   const query = Object.fromEntries(url.searchParams);
+
+  // Check dashboard auth for WebSocket connections
+  if (!isAuthenticated(req)) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
 
   // Validate WebSocket handshake
   const wsKey = req.headers['sec-websocket-key'];
