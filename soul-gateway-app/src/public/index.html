@@ -369,11 +369,14 @@
           </dialog>
           <!-- Show created key -->
           <div x-show="newKey" class="alert alert-info mb-4">
-            <div>
+            <div class="flex-1">
               <span class="font-bold">New API Key (copy now, it won't be shown again):</span>
               <code class="ml-2 select-all" x-text="newKey"></code>
             </div>
-            <button class="btn btn-ghost btn-sm" @click="newKey = ''">Dismiss</button>
+            <div class="flex gap-1">
+              <button class="btn btn-sm" x-data="{copied: false}" @click="navigator.clipboard.writeText(newKey); copied = true; setTimeout(() => copied = false, 2000)" x-text="copied ? 'Copied!' : 'Copy'"></button>
+              <button class="btn btn-ghost btn-sm" @click="newKey = ''">Dismiss</button>
+            </div>
           </div>
           <div class="card bg-base-100 shadow">
             <div class="card-body p-0">
