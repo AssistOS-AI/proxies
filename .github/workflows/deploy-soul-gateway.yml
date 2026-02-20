@@ -1,0 +1,226 @@
+name: Deploy Soul Gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'soul-gateway/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - restart
+          - stop
+          - status
+
+jobs:
+  deploy-soul-gateway:
+    name: Deploy Soul Gateway to Remote Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Test SSH connection
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} \
+            "echo 'SSH connection OK'"
+
+      # ─── STATUS ─────────────────────────────────────────────────
+      - name: Handle status check
+        if: inputs.action == 'status'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          echo "=== Ploinky Status ==="
+          cd ~/soulGateway
+          ploinky status
+
+          echo ""
+          echo "=== Soul Gateway Health Check ==="
+          curl -s http://localhost:8042/health 2>/dev/null || echo "Soul Gateway not reachable on port 8042"
+
+          echo ""
+          echo "=== Container Logs (last 20 lines) ==="
+          CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -n "$CONTAINER" ]; then
+            podman logs --tail 20 "$CONTAINER" 2>/dev/null
+          else
+            echo "No soul-gateway container found"
+          fi
+
+          echo ""
+          echo "=== Postgres Container ==="
+          podman ps --filter "name=postgres" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "No postgres container found"
+          EOF
+
+      # ─── STOP ───────────────────────────────────────────────────
+      - name: Handle stop
+        if: inputs.action == 'stop'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          cd ~/soulGateway
+          echo "Stopping soul-gateway..."
+          ploinky stop soul-gateway 2>&1 || echo "Stop failed - agent may not be running"
+          echo ""
+          ploinky status
+          EOF
+
+      # ─── RESTART ────────────────────────────────────────────────
+      - name: Handle restart
+        if: inputs.action == 'restart'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          cd ~/soulGateway
+          ploinky restart soul-gateway || echo "Restart failed - agent may not be enabled yet"
+          sleep 5
+          echo ""
+          echo "=== Post-restart Status ==="
+          ploinky status
+          echo ""
+          curl -s http://localhost:8042/health 2>/dev/null || echo "Soul Gateway not reachable yet"
+          EOF
+
+      # ─── DEPLOY ─────────────────────────────────────────────────
+      - name: Deploy - Write secrets env file
+        if: inputs.action == 'deploy' || github.event_name == 'push'
+        run: |
+          cat > /tmp/soul_env << ENVEOF
+          PGPASSWORD=${{ secrets.SG_PGPASSWORD }}
+          DEFAULT_PROXY_API_KEY=${{ secrets.SG_DEFAULT_PROXY_API_KEY }}
+          DASHBOARD_PASSWORD=${{ secrets.SG_DASHBOARD_PASSWORD }}
+          ENVEOF
+
+      - name: Deploy - SCP secrets to remote
+        if: inputs.action == 'deploy' || github.event_name == 'push'
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            /tmp/soul_env \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }}:/tmp/soul_env
+
+      - name: Deploy - Run remote setup
+        if: inputs.action == 'deploy' || github.event_name == 'push'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'DEPLOY_SCRIPT'
+          set -e
+
+          # Source secrets
+          while IFS='=' read -r key value; do
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | xargs)
+            [ -n "$key" ] && export "$key=$value"
+          done < /tmp/soul_env
+          rm -f /tmp/soul_env
+
+          WORKSPACE="$HOME/soulGateway"
+          PROXIES_REPO="https://github.com/PloinkyRepos/proxies.git"
+          BASIC_REPO="https://github.com/PloinkyRepos/Basic.git"
+          CODE_DIR="$HOME/code"
+
+          echo "=========================================="
+          echo "  Soul Gateway - Deploy"
+          echo "=========================================="
+          echo ""
+
+          # Clone or pull repos
+          if [ -d "$CODE_DIR/proxies/.git" ]; then
+            echo "Pulling latest proxies..."
+            cd "$CODE_DIR/proxies" && git fetch origin main && git reset --hard origin/main
+          else
+            echo "Cloning proxies repo..."
+            mkdir -p "$CODE_DIR"
+            git clone "$PROXIES_REPO" "$CODE_DIR/proxies"
+          fi
+
+          if [ -d "$CODE_DIR/basic/.git" ]; then
+            echo "Pulling latest basic..."
+            cd "$CODE_DIR/basic" && git fetch origin main && git reset --hard origin/main
+          else
+            echo "Cloning basic repo..."
+            git clone "$BASIC_REPO" "$CODE_DIR/basic"
+          fi
+
+          # Create workspace
+          mkdir -p "$WORKSPACE"
+          cd "$WORKSPACE"
+
+          # Register repos with ploinky
+          mkdir -p "$WORKSPACE/.ploinky/repos"
+          ln -sfn "$CODE_DIR/proxies" "$WORKSPACE/.ploinky/repos/proxies"
+          ln -sfn "$CODE_DIR/basic" "$WORKSPACE/.ploinky/repos/basic"
+
+          if [ ! -f "$WORKSPACE/.ploinky/enabled_repos.json" ]; then
+            echo '["basic","proxies"]' > "$WORKSPACE/.ploinky/enabled_repos.json"
+          fi
+
+          # Configure env vars
+          echo "Configuring env vars..."
+          ploinky var PGHOST "host.containers.internal"
+          ploinky var PGPORT "5432"
+          ploinky var PGUSER "postgres"
+          ploinky var PGPASSWORD "$PGPASSWORD"
+          ploinky var PGDATABASE "postgres"
+          ploinky var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
+          ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
+
+          # Stop and clean existing
+          if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "soul-gateway.*soulGateway"; then
+            echo "Stopping existing soul-gateway..."
+            ploinky stop soul-gateway 2>&1 || true
+            ploinky clean soul-gateway 2>&1 || true
+          fi
+
+          # Start soul-gateway
+          mkdir -p "$WORKSPACE/logs"
+          echo "Starting soul-gateway..."
+          ploinky start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
+
+          # Health check
+          echo "Waiting for startup..."
+          for i in $(seq 1 30); do
+            sleep 2
+            if curl -sf http://localhost:8042/health > /dev/null 2>&1; then
+              echo ""
+              echo "Soul Gateway is healthy!"
+              curl -s http://localhost:8042/health
+              echo ""
+
+              echo ""
+              echo "=========================================="
+              echo "  Deployment Success"
+              echo "=========================================="
+              ploinky status
+              exit 0
+            fi
+            echo "  Attempt $i/30..."
+          done
+
+          echo "ERROR: Soul Gateway failed to start"
+          echo "=== Deploy log ==="
+          tail -30 "$WORKSPACE/logs/deploy.log" 2>/dev/null || true
+          echo "=== Container log ==="
+          podman logs --tail 30 "$(podman ps -a --format '{{.Names}}' | grep soul-gateway | head -1)" 2>&1 || true
+          exit 1
+          DEPLOY_SCRIPT
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key /tmp/soul_env

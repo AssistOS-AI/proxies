@@ -1,0 +1,53 @@
+name: Destroy Soul Gateway
+
+on:
+  workflow_dispatch:
+
+jobs:
+  destroy:
+    name: Destroy Soul Gateway on Remote Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Test SSH connection
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} \
+            "echo 'SSH connection OK'"
+
+      - name: Teardown Soul Gateway
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'TEARDOWN'
+          set -e
+          WORKSPACE="$HOME/soulGateway"
+
+          echo "=== Tearing down Soul Gateway ==="
+
+          if [ -d "$WORKSPACE" ]; then
+            cd "$WORKSPACE"
+            echo "Shutting down ploinky workspace..."
+            ploinky shutdown 2>&1 || true
+            echo "Cleaning up any remaining containers..."
+            podman rm -f $(podman ps -a --format '{{.Names}}' | grep soulGateway) 2>/dev/null || true
+            echo "Removing workspace..."
+            rm -rf "$WORKSPACE"
+            echo "Removing code repos..."
+            rm -rf "$HOME/code/proxies" "$HOME/code/basic"
+            echo "Soul Gateway torn down successfully."
+          else
+            echo "No soulGateway workspace found, nothing to do."
+          fi
+          TEARDOWN
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
