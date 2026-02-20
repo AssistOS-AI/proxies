@@ -197,6 +197,17 @@ jobs:
           echo "Starting soul-gateway..."
           ploinky start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
 
+          # Ensure postgres password matches (data dir may have stale password from prior deploy)
+          echo "Syncing postgres password..."
+          for i in $(seq 1 10); do
+            if podman exec $(podman ps --filter "name=postgres" --format "{{.Names}}" | head -1) \
+              psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" 2>/dev/null; then
+              echo "Postgres password synced."
+              break
+            fi
+            sleep 1
+          done
+
           # Health check
           echo "Waiting for startup..."
           for i in $(seq 1 30); do
