@@ -179,7 +179,11 @@ jobs:
           ploinky var PGPASSWORD "$PGPASSWORD"
           ploinky var PGDATABASE "postgres"
           ploinky var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
-          ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
+          if [ -n "$DASHBOARD_PASSWORD" ]; then
+            ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
+          else
+            ploinky var DASHBOARD_PASSWORD " "
+          fi
 
           # Stop and clean existing
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "soul-gateway.*soulGateway"; then
