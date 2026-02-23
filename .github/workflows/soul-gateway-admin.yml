@@ -90,9 +90,11 @@ jobs:
 
           cd ~/soulGateway
 
-          echo "=== Restarting to pick up env vars ==="
-          ploinky restart soul-gateway 2>&1 || true
-          sleep 8
+          echo "=== Stopping and rebuilding container to pick up manifest changes ==="
+          ploinky stop soul-gateway 2>&1 || true
+          ploinky clean soul-gateway 2>&1 || true
+          ploinky start soul-gateway 2>&1 || true
+          sleep 10
 
           echo ""
           echo "=== Health check ==="
