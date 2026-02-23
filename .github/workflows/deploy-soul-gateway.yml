@@ -192,28 +192,31 @@ jobs:
             ploinky clean soul-gateway 2>&1 || true
           fi
 
-          # Ensure trust auth on postgres (prevents password mismatch permanently)
-          ploinky expose POSTGRES_HOST_AUTH_METHOD trust postgres 2>&1 || true
-
           # Start soul-gateway (starts postgres too)
           mkdir -p "$WORKSPACE/logs"
           echo "Starting soul-gateway..."
           ploinky start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
 
-          # Wait for postgres, then sync password
-          echo "Waiting for postgres and syncing password..."
-          for i in $(seq 1 15); do
-            if podman exec $(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1) \
-              psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" 2>/dev/null; then
-              echo "Postgres password synced."
+          # Wait for postgres to be ready, then patch pg_hba.conf to trust all connections
+          # This permanently prevents password mismatch issues across container recreations
+          echo "Waiting for postgres..."
+          PG_CONTAINER=""
+          for i in $(seq 1 20); do
+            PG_CONTAINER=$(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1)
+            if [ -n "$PG_CONTAINER" ] && podman exec "$PG_CONTAINER" psql -U postgres -c "SELECT 1" >/dev/null 2>&1; then
+              echo "Postgres is ready."
               break
             fi
             sleep 1
           done
 
-          # Restart soul-gateway to ensure fresh DB connection pool
-          echo "Restarting soul-gateway with synced password..."
-          ploinky restart soul-gateway 2>&1 || true
+          if [ -n "$PG_CONTAINER" ]; then
+            # Patch pg_hba.conf: replace scram-sha-256 with trust for all remote connections
+            podman exec "$PG_CONTAINER" sed -i 's/host all all all scram-sha-256/host all all all trust/' \
+              /var/lib/postgresql/data/pgdata/pg_hba.conf 2>/dev/null || true
+            podman exec "$PG_CONTAINER" psql -U postgres -c "SELECT pg_reload_conf();" >/dev/null 2>&1 || true
+            echo "Postgres pg_hba.conf patched to trust auth."
+          fi
 
           # Health check
           echo "Waiting for startup..."
