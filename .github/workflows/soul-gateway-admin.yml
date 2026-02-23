@@ -10,6 +10,7 @@ on:
         options:
           - add-openrouter-models
           - test-openrouter
+          - diagnose
           - status
 
 jobs:
@@ -131,6 +132,110 @@ jobs:
           echo ""
           echo "=== Container logs ==="
           podman logs --tail 15 "$CONTAINER" 2>&1 || true
+          EOF
+
+      - name: Diagnose provider models
+        if: inputs.task == 'diagnose'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'EOF'
+
+          cd ~/soulGateway
+
+          CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -z "$CONTAINER" ]; then
+            echo "ERROR: No soul-gateway container found"
+            exit 1
+          fi
+          echo "Container: $CONTAINER"
+
+          echo ""
+          echo "=== Env vars in container ==="
+          podman exec "$CONTAINER" sh -c '
+            echo "AXIOLOGIC_PROXY_API_KEY=${AXIOLOGIC_PROXY_API_KEY:+SET (${#AXIOLOGIC_PROXY_API_KEY} chars)}"
+            echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY:+SET (${#OPENROUTER_API_KEY} chars)}"
+            echo "DEFAULT_PROXY_API_KEY=${DEFAULT_PROXY_API_KEY:+SET (${#DEFAULT_PROXY_API_KEY} chars)}"
+          ' 2>&1
+
+          echo ""
+          echo "=== DNS resolution from container ==="
+          podman exec "$CONTAINER" sh -c '
+            node -e "
+              const dns = require(\"dns\");
+              dns.lookup(\"proxy.axiologic.dev\", (err, addr) => {
+                if (err) console.log(\"DNS FAILED:\", err.message);
+                else console.log(\"proxy.axiologic.dev ->\", addr);
+              });
+            "
+          ' 2>&1
+
+          echo ""
+          echo "=== Fetch models from axiologic_proxy (proxy.axiologic.dev/v1/models) ==="
+          podman exec "$CONTAINER" sh -c '
+            node -e "
+              (async () => {
+                const key = process.env.AXIOLOGIC_PROXY_API_KEY;
+                console.log(\"Using API key:\", key ? key.substring(0, 8) + \"...\" : \"(empty)\");
+                try {
+                  const resp = await fetch(\"https://proxy.axiologic.dev/v1/models\", {
+                    headers: key ? { Authorization: \"Bearer \" + key } : {},
+                    signal: AbortSignal.timeout(10000)
+                  });
+                  console.log(\"Status:\", resp.status);
+                  const data = await resp.json();
+                  const models = data.data || data;
+                  console.log(\"Models count:\", Array.isArray(models) ? models.length : \"not an array\");
+                  if (Array.isArray(models)) console.log(\"First 5:\", models.slice(0, 5).map(m => m.id || m.name));
+                } catch (e) {
+                  console.log(\"ERROR:\", e.message);
+                }
+              })();
+            "
+          ' 2>&1
+
+          echo ""
+          echo "=== Fetch models from openrouter (openrouter.ai/api/v1/models) ==="
+          podman exec "$CONTAINER" sh -c '
+            node -e "
+              (async () => {
+                const key = process.env.OPENROUTER_API_KEY;
+                console.log(\"Using API key:\", key ? key.substring(0, 8) + \"...\" : \"(empty)\");
+                try {
+                  const resp = await fetch(\"https://openrouter.ai/api/v1/models\", {
+                    headers: key ? { Authorization: \"Bearer \" + key } : {},
+                    signal: AbortSignal.timeout(10000)
+                  });
+                  console.log(\"Status:\", resp.status);
+                  const text = await resp.text();
+                  console.log(\"Response length:\", text.length);
+                  try {
+                    const data = JSON.parse(text);
+                    const models = data.data || data;
+                    console.log(\"Models count:\", Array.isArray(models) ? models.length : \"not an array\");
+                  } catch(e) {
+                    console.log(\"First 200 chars:\", text.substring(0, 200));
+                  }
+                } catch (e) {
+                  console.log(\"ERROR:\", e.message);
+                }
+              })();
+            "
+          ' 2>&1
+
+          echo ""
+          echo "=== LLMConfig.json providers ==="
+          podman exec "$CONTAINER" sh -c '
+            node -e "
+              const cfg = require(\"/code/node_modules/achillesAgentLib/LLMConfig.json\");
+              Object.entries(cfg.providers).forEach(([k,v]) => {
+                console.log(k + \": \" + v.baseURL + \" (key: \" + v.apiKeyEnv + \")\");
+              });
+            "
+          ' 2>&1
+
+          echo ""
+          echo "=== Container logs (last 20 lines) ==="
+          podman logs --tail 20 "$CONTAINER" 2>&1 || true
           EOF
 
       - name: Status
