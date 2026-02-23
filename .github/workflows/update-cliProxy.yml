@@ -1,0 +1,74 @@
+name: Update CLIProxyAPI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  update-cliproxy:
+    name: Update CLIProxyAPI to latest version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Update CLIProxyAPI
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          set -e
+
+          CONTAINER=$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -z "$CONTAINER" ]; then
+            echo "ERROR: No CLIProxyAPI container running"
+            exit 1
+          fi
+
+          echo "=== Current version ==="
+          podman exec "$CONTAINER" /app/CLIProxyAPI --version 2>&1 || true
+
+          echo ""
+          echo "=== Pulling latest source ==="
+          podman exec "$CONTAINER" sh -c 'cd /app && git fetch origin main && git log --oneline HEAD..origin/main' 2>&1
+          podman exec "$CONTAINER" sh -c 'cd /app && git reset --hard origin/main' 2>&1
+
+          echo ""
+          echo "=== Rebuilding ==="
+          podman exec "$CONTAINER" sh -c '
+            export PATH="$PATH:/usr/local/go/bin"
+            cd /app
+            CGO_ENABLED=0 GOOS=linux go build \
+              -ldflags="-s -w -X main.Version=ploinky-$(git rev-parse --short HEAD) -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+              -o /app/CLIProxyAPI \
+              ./cmd/server/
+          ' 2>&1
+
+          echo ""
+          echo "=== Restarting ==="
+          cd ~/proxy-gateway/workspace
+          ploinky restart cliproxyapi-gateway 2>&1
+
+          echo ""
+          echo "=== Waiting for health check ==="
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8317/ > /dev/null 2>&1; then
+              echo "CLIProxyAPI is healthy!"
+              podman exec "$CONTAINER" /app/CLIProxyAPI --version 2>&1 || true
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "ERROR: CLIProxyAPI failed to start after update"
+          podman logs --tail 20 "$CONTAINER" 2>&1 || true
+          exit 1
+          EOF
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
