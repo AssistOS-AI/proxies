@@ -106,6 +106,7 @@ jobs:
           PGPASSWORD=${{ secrets.SG_PGPASSWORD }}
           DEFAULT_PROXY_API_KEY=${{ secrets.SG_DEFAULT_PROXY_API_KEY }}
           DASHBOARD_PASSWORD=${{ secrets.SG_DASHBOARD_PASSWORD }}
+          AXIOLOGIC_PROXY_API_KEY=${{ secrets.CLIPROXY_API_KEY }}
           ENVEOF
 
       - name: Deploy - SCP secrets to remote
@@ -179,7 +180,7 @@ jobs:
           ploinky var PGPASSWORD "$PGPASSWORD"
           ploinky var PGDATABASE "postgres"
           ploinky var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
-          ploinky var AXIOLOGIC_PROXY_API_KEY "cliproxyapi-key"
+          ploinky var AXIOLOGIC_PROXY_API_KEY "$AXIOLOGIC_PROXY_API_KEY"
           if [ -n "$DASHBOARD_PASSWORD" ]; then
             ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
           else
