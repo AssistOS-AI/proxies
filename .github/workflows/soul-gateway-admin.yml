@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - add-openrouter-models
+          - test-openrouter
           - status
 
 jobs:
@@ -79,6 +80,38 @@ jobs:
           echo ""
           echo "=== Available models ==="
           curl -s -H "x-api-key: dummy" http://localhost:8042/v1/models 2>/dev/null || echo "Failed to list models"
+          EOF
+
+      - name: Test OpenRouter
+        if: inputs.task == 'test-openrouter'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'EOF'
+
+          echo "=== Env check ==="
+          cd ~/soulGateway
+          ploinky vars 2>/dev/null | grep OPENROUTER || echo "OPENROUTER_API_KEY not set!"
+
+          echo ""
+          echo "=== Container logs before test ==="
+          CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          podman logs --tail 5 "$CONTAINER" 2>&1 || true
+
+          echo ""
+          echo "=== Testing x-ai/grok-4.1-fast via soul gateway ==="
+          curl -sv --max-time 30 http://localhost:8042/v1/chat/completions \
+            -H "Authorization: Bearer ${{ secrets.SG_DEFAULT_PROXY_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "model": "x-ai/grok-4.1-fast",
+              "messages": [{"role": "user", "content": "Say hi"}],
+              "max_tokens": 10,
+              "stream": false
+            }' 2>&1
+
+          echo ""
+          echo "=== Container logs after test ==="
+          podman logs --tail 20 "$CONTAINER" 2>&1 || true
           EOF
 
       - name: Status
