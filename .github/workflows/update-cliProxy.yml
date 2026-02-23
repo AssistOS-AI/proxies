@@ -20,8 +20,7 @@ jobs:
       - name: Update CLIProxyAPI
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
-          set -e
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'EOF'
 
           CONTAINER=$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
           if [ -z "$CONTAINER" ]; then
