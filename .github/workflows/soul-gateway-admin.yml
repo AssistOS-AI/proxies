@@ -1,0 +1,101 @@
+name: Soul Gateway Admin
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: 'Admin task to run'
+        required: true
+        type: choice
+        options:
+          - add-openrouter-models
+          - status
+
+jobs:
+  admin:
+    name: Run admin task
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Add OpenRouter models
+        if: inputs.task == 'add-openrouter-models'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'EOF'
+
+          cd ~/soulGateway
+
+          # Set OPENROUTER_API_KEY
+          ploinky var OPENROUTER_API_KEY "${{ secrets.OPENROUTER_API_KEY }}"
+          echo "OPENROUTER_API_KEY set."
+
+          # Insert models into soul gateway DB
+          PG_CONTAINER=$(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -z "$PG_CONTAINER" ]; then
+            echo "ERROR: No postgres container found"
+            exit 1
+          fi
+
+          echo "Inserting OpenRouter models..."
+          podman exec "$PG_CONTAINER" psql -U postgres -d postgres -c "
+            INSERT INTO soul_gateway.model_configs (name, provider_key, provider_model, mode, input_price, output_price, is_enabled)
+            VALUES
+              ('deepseek/deepseek-r1-0528', 'openrouter', 'deepseek/deepseek-r1-0528', 'deep', 0.40, 1.75, true),
+              ('qwen/qwen3-coder-plus', 'openrouter', 'qwen/qwen3-coder-plus', 'deep', 1.00, 5.00, true),
+              ('mistralai/codestral-2508', 'openrouter', 'mistralai/codestral-2508', 'deep', 0.30, 0.90, true),
+              ('x-ai/grok-4', 'openrouter', 'x-ai/grok-4', 'deep', 3.00, 15.00, true),
+              ('google/gemini-3-pro-preview', 'openrouter', 'google/gemini-3-pro-preview', 'deep', 2.00, 12.00, true),
+              ('x-ai/grok-4.1-fast', 'openrouter', 'x-ai/grok-4.1-fast', 'fast', 0.20, 0.50, true)
+            ON CONFLICT (name) DO UPDATE SET
+              provider_key = EXCLUDED.provider_key,
+              provider_model = EXCLUDED.provider_model,
+              mode = EXCLUDED.mode,
+              input_price = EXCLUDED.input_price,
+              output_price = EXCLUDED.output_price,
+              is_enabled = EXCLUDED.is_enabled;
+          " 2>&1
+
+          echo ""
+          echo "=== Models in DB ==="
+          podman exec "$PG_CONTAINER" psql -U postgres -d postgres -c \
+            "SELECT name, provider_key, provider_model, is_enabled FROM soul_gateway.model_configs ORDER BY name;" 2>&1
+
+          # Restart soul-gateway to pick up new env var
+          echo ""
+          echo "Restarting soul-gateway..."
+          ploinky restart soul-gateway 2>&1 || true
+
+          sleep 5
+          curl -s http://localhost:8042/health 2>/dev/null || echo "Not healthy yet"
+
+          echo ""
+          echo "=== Available models ==="
+          curl -s -H "x-api-key: dummy" http://localhost:8042/v1/models 2>/dev/null || echo "Failed to list models"
+          EOF
+
+      - name: Status
+        if: inputs.task == 'status'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'EOF'
+          cd ~/soulGateway
+          ploinky status
+          echo ""
+          ploinky vars
+          echo ""
+          PG_CONTAINER=$(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1)
+          podman exec "$PG_CONTAINER" psql -U postgres -d postgres -c \
+            "SELECT name, provider_key, provider_model, is_enabled FROM soul_gateway.model_configs ORDER BY name;" 2>&1
+          EOF
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key
