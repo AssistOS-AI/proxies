@@ -185,17 +185,6 @@ jobs:
             ploinky var DASHBOARD_PASSWORD " "
           fi
 
-          # Sync postgres password BEFORE starting soul-gateway to avoid auth race
-          echo "Syncing postgres password..."
-          for i in $(seq 1 10); do
-            if podman exec $(podman ps --filter "name=postgres" --format "{{.Names}}" | head -1) \
-              psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" 2>/dev/null; then
-              echo "Postgres password synced."
-              break
-            fi
-            sleep 1
-          done
-
           # Stop and clean existing
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "soul-gateway.*soulGateway"; then
             echo "Stopping existing soul-gateway..."
@@ -203,10 +192,28 @@ jobs:
             ploinky clean soul-gateway 2>&1 || true
           fi
 
-          # Start soul-gateway
+          # Ensure trust auth on postgres (prevents password mismatch permanently)
+          ploinky expose POSTGRES_HOST_AUTH_METHOD trust postgres 2>&1 || true
+
+          # Start soul-gateway (starts postgres too)
           mkdir -p "$WORKSPACE/logs"
           echo "Starting soul-gateway..."
           ploinky start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
+
+          # Wait for postgres, then sync password
+          echo "Waiting for postgres and syncing password..."
+          for i in $(seq 1 15); do
+            if podman exec $(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1) \
+              psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" 2>/dev/null; then
+              echo "Postgres password synced."
+              break
+            fi
+            sleep 1
+          done
+
+          # Restart soul-gateway to ensure fresh DB connection pool
+          echo "Restarting soul-gateway with synced password..."
+          ploinky restart soul-gateway 2>&1 || true
 
           # Health check
           echo "Waiting for startup..."
