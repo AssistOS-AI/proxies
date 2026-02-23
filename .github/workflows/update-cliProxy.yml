@@ -30,7 +30,7 @@ jobs:
           fi
 
           echo "=== Current version ==="
-          podman exec "$CONTAINER" /app/CLIProxyAPI --version 2>&1 || true
+          podman exec "$CONTAINER" sh -c 'cd /app && git log --oneline -1' 2>&1 || true
 
           echo ""
           echo "=== Pulling latest source ==="
@@ -58,7 +58,7 @@ jobs:
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8317/ > /dev/null 2>&1; then
               echo "CLIProxyAPI is healthy!"
-              podman exec "$CONTAINER" /app/CLIProxyAPI --version 2>&1 || true
+              podman exec "$CONTAINER" sh -c 'cd /app && echo "Updated to: $(git log --oneline -1)"' 2>&1
               exit 0
             fi
             sleep 2
