@@ -250,10 +250,14 @@ jobs:
           echo "Setting AXIOLOGIC_PROXY_API_KEY..."
           ploinky var AXIOLOGIC_PROXY_API_KEY "${{ secrets.CLIPROXY_API_KEY }}"
 
-          echo "Restarting soul-gateway..."
-          ploinky restart soul-gateway 2>&1 || true
+          echo "Stopping and removing soul-gateway container to pick up new env vars..."
+          ploinky stop soul-gateway 2>&1 || true
+          ploinky clean soul-gateway 2>&1 || true
 
-          sleep 5
+          echo "Starting soul-gateway with fresh container..."
+          ploinky start soul-gateway 2>&1 || true
+
+          sleep 8
 
           echo ""
           echo "=== Health check ==="
