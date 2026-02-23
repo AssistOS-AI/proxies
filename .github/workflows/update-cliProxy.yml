@@ -51,21 +51,23 @@ jobs:
           echo ""
           echo "=== Restarting ==="
           cd ~/proxy-gateway/workspace
-          ploinky restart cliproxyapi-gateway 2>&1
+          ploinky restart cliproxyapi-gateway 2>&1 || true
 
           echo ""
           echo "=== Waiting for health check ==="
           for i in $(seq 1 30); do
             if curl -sf http://localhost:8317/ > /dev/null 2>&1; then
               echo "CLIProxyAPI is healthy!"
-              podman exec "$CONTAINER" sh -c 'cd /app && echo "Updated to: $(git log --oneline -1)"' 2>&1
+              NEW_CONTAINER=$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
+              podman exec "$NEW_CONTAINER" sh -c 'cd /app && echo "Updated to: $(git log --oneline -1)"' 2>&1 || true
               exit 0
             fi
             sleep 2
           done
 
           echo "ERROR: CLIProxyAPI failed to start after update"
-          podman logs --tail 20 "$CONTAINER" 2>&1 || true
+          NEW_CONTAINER=$(podman ps -a --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
+          [ -n "$NEW_CONTAINER" ] && podman logs --tail 20 "$NEW_CONTAINER" 2>&1 || true
           exit 1
           EOF
 
