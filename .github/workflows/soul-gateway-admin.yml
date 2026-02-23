@@ -11,6 +11,7 @@ on:
           - add-openrouter-models
           - test-openrouter
           - diagnose
+          - fix-proxy-key
           - status
 
 jobs:
@@ -236,6 +237,51 @@ jobs:
           echo ""
           echo "=== Container logs (last 20 lines) ==="
           podman logs --tail 20 "$CONTAINER" 2>&1 || true
+          EOF
+
+      - name: Fix proxy API key
+        if: inputs.task == 'fix-proxy-key'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'EOF'
+
+          cd ~/soulGateway
+
+          echo "Setting AXIOLOGIC_PROXY_API_KEY..."
+          ploinky var AXIOLOGIC_PROXY_API_KEY "${{ secrets.CLIPROXY_API_KEY }}"
+
+          echo "Restarting soul-gateway..."
+          ploinky restart soul-gateway 2>&1 || true
+
+          sleep 5
+
+          echo ""
+          echo "=== Health check ==="
+          curl -s http://localhost:8042/health 2>/dev/null || echo "Not healthy yet"
+
+          echo ""
+          echo "=== Testing proxy models fetch ==="
+          CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          podman exec "$CONTAINER" sh -c '
+            node -e "
+              (async () => {
+                const key = process.env.AXIOLOGIC_PROXY_API_KEY;
+                console.log(\"API key:\", key ? key.substring(0, 8) + \"...\" : \"(empty)\");
+                try {
+                  const resp = await fetch(\"https://proxy.axiologic.dev/v1/models\", {
+                    headers: key ? { Authorization: \"Bearer \" + key } : {},
+                    signal: AbortSignal.timeout(10000)
+                  });
+                  console.log(\"Status:\", resp.status);
+                  const data = await resp.json();
+                  const models = data.data || data;
+                  console.log(\"Models:\", Array.isArray(models) ? models.length + \" models loaded\" : \"error\");
+                } catch (e) {
+                  console.log(\"ERROR:\", e.message);
+                }
+              })();
+            "
+          ' 2>&1
           EOF
 
       - name: Status
