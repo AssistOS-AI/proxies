@@ -179,6 +179,7 @@ jobs:
           ploinky var PGPASSWORD "$PGPASSWORD"
           ploinky var PGDATABASE "postgres"
           ploinky var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
+          ploinky var AXIOLOGIC_PROXY_API_KEY "cliproxyapi-key"
           if [ -n "$DASHBOARD_PASSWORD" ]; then
             ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
           else
