@@ -76,7 +76,7 @@ logging-to-file: false
 usage-statistics-enabled: true
 
 proxy-url: ""
-force-model-prefix: false
+force-model-prefix: true
 request-retry: 3
 max-retry-interval: 30
 

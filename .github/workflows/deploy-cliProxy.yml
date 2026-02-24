@@ -365,6 +365,68 @@ jobs:
           fi
           SETUP_EOF
 
+      - name: Deploy - Configure credential prefixes
+        if: inputs.action == 'deploy'
+        env:
+          MANAGEMENT_PASSWORD: ${{ secrets.CLIPROXY_MANAGEMENT_KEY }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << PREFIX_EOF
+          set -e
+
+          MGMT_URL="http://localhost:8317/v0/management"
+          AUTH_HEADER="Authorization: Bearer ${MANAGEMENT_PASSWORD}"
+
+          echo "Configuring credential prefixes..."
+
+          # Map of auth file patterns to their desired prefix
+          # Format: pattern|prefix
+          PREFIX_MAP="
+          gemini-*-gen-lang-client-*.json|gemini-cli
+          gemini-*-secret-energy-*.json|gemini-cli
+          codex-*.json|codex
+          antigravity-*.json|antigravity
+          "
+
+          # Get list of auth files
+          AUTH_FILES=\$(curl -s -H "\$AUTH_HEADER" "\$MGMT_URL/auth-files" | \
+            python3 -c "import sys,json; [print(f['name']) for f in json.load(sys.stdin).get('files',[])]" 2>/dev/null)
+
+          for mapping in \$PREFIX_MAP; do
+            [ -z "\$mapping" ] && continue
+            PATTERN=\$(echo "\$mapping" | cut -d'|' -f1)
+            PREFIX=\$(echo "\$mapping" | cut -d'|' -f2)
+
+            for AUTH_FILE in \$AUTH_FILES; do
+              case "\$AUTH_FILE" in
+                \$PATTERN)
+                  # Download, check if prefix already set, update if needed
+                  CURRENT=\$(curl -s -H "\$AUTH_HEADER" "\$MGMT_URL/auth-files/download?name=\$AUTH_FILE" | \
+                    python3 -c "import sys,json; print(json.load(sys.stdin).get('prefix',''))" 2>/dev/null)
+
+                  if [ "\$CURRENT" != "\$PREFIX" ]; then
+                    echo "  Setting prefix '\$PREFIX' on \$AUTH_FILE"
+                    # Download, add prefix, re-upload
+                    curl -s -H "\$AUTH_HEADER" "\$MGMT_URL/auth-files/download?name=\$AUTH_FILE" | \
+                      python3 -c "import sys,json; d=json.load(sys.stdin); d['prefix']='\$PREFIX'; json.dump(d,sys.stdout)" \
+                      > /tmp/auth-prefix-update.json
+
+                    curl -s -X POST -H "\$AUTH_HEADER" \
+                      -F "file=@/tmp/auth-prefix-update.json;filename=\$AUTH_FILE" \
+                      "\$MGMT_URL/auth-files" > /dev/null
+
+                    rm -f /tmp/auth-prefix-update.json
+                  else
+                    echo "  \$AUTH_FILE already has prefix '\$PREFIX'"
+                  fi
+                  ;;
+              esac
+            done
+          done
+
+          echo "Credential prefix configuration complete."
+          PREFIX_EOF
+
       - name: Cleanup SSH key
         if: always()
         run: rm -f ~/.ssh/deploy_key
