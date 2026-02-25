@@ -18,6 +18,7 @@ Unified AI proxy supporting Claude, Gemini, Codex, Antigravity, Kimi, Qwen, and 
 | `PROXY_API_KEY` | `cliproxyapi-key` | API key for client authentication |
 | `MANAGEMENT_PASSWORD` | `management-secret` | Management API password |
 | `PORT` | `8317` | API server port |
+| `HF_API_KEY` | _(empty)_ | HuggingFace API key for inference providers (Apriel, etc.) |
 
 ## Usage
 

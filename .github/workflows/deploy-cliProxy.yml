@@ -254,6 +254,7 @@ jobs:
         env:
           PROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
           MANAGEMENT_PASSWORD: ${{ secrets.CLIPROXY_MANAGEMENT_KEY }}
+          HF_API_KEY: ${{ secrets.HF_API_KEY }}
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << SETUP_EOF
@@ -281,6 +282,7 @@ jobs:
           # Set environment variables in ploinky secrets
           ploinky var PROXY_API_KEY "${PROXY_API_KEY}"
           ploinky var MANAGEMENT_PASSWORD "${MANAGEMENT_PASSWORD}"
+          ploinky var HF_API_KEY "${HF_API_KEY}"
 
           # Check if agent is already running
           EXISTING=\$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)

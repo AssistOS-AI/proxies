@@ -17,6 +17,10 @@
                 "PORT": {
                     "required": false,
                     "default": "8317"
+                },
+                "HF_API_KEY": {
+                    "required": false,
+                    "default": ""
                 }
             },
             "ports": [

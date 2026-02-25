@@ -91,6 +91,22 @@ ws-auth: false
 nonstream-keepalive-interval: 0
 EOF
 
+    # Add HuggingFace provider if API key is set
+    if [ -n "${HF_API_KEY:-}" ]; then
+        cat >> "$SHARED_DIR/config/config.yaml" << HF_EOF
+
+openai-compatibility:
+  - name: "huggingface"
+    base-url: "https://router.huggingface.co/v1"
+    api-key-entries:
+      - api-key: "$HF_API_KEY"
+    models:
+      - name: "ServiceNow-AI/Apriel-1.6-15b-Thinker"
+        alias: ""
+HF_EOF
+        echo "HuggingFace provider added to config"
+    fi
+
     echo "Config generated at $SHARED_DIR/config/config.yaml"
 else
     echo "Using existing config from $SHARED_DIR/config/config.yaml"
