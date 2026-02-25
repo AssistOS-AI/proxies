@@ -175,7 +175,7 @@ jobs:
 
           # Configure env vars
           echo "Configuring env vars..."
-          ploinky var PGHOST "host.containers.internal"
+          ploinky var PGHOST "10.0.2.2"  # slirp4netns gateway → host loopback
           ploinky var PGPORT "5432"
           ploinky var PGUSER "postgres"
           ploinky var PGPASSWORD "$PGPASSWORD"
