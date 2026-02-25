@@ -53,8 +53,8 @@ if [ ! -f "$SHARED_DIR/config/config.yaml" ]; then
     exit 1
 fi
 
-# Copy config to the working directory where CLIProxyAPI expects it
-cp "$SHARED_DIR/config/config.yaml" "$APP_DIR/config.yaml"
+# Symlink config so management API changes persist to shared storage
+ln -sf "$SHARED_DIR/config/config.yaml" "$APP_DIR/config.yaml"
 
 echo -e "${GREEN}Configuration loaded from $SHARED_DIR/config/config.yaml${NC}"
 echo -e "${GREEN}Auth directory: /root/.cli-proxy-api -> $SHARED_DIR/auths${NC}"
