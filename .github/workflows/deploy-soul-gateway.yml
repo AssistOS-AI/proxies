@@ -217,11 +217,13 @@ jobs:
           done
 
           if [ -n "$PG_CONTAINER" ]; then
-            # Patch pg_hba.conf: replace scram-sha-256 with trust for all remote connections
-            podman exec "$PG_CONTAINER" sed -i 's/host all all all scram-sha-256/host all all all trust/' \
+            # Ensure pg_hba.conf uses scram-sha-256 (undo any previous trust patch)
+            podman exec "$PG_CONTAINER" sed -i 's/host all all all trust/host all all all scram-sha-256/' \
               /var/lib/postgresql/data/pgdata/pg_hba.conf 2>/dev/null || true
             podman exec "$PG_CONTAINER" psql -U postgres -c "SELECT pg_reload_conf();" >/dev/null 2>&1 || true
-            echo "Postgres pg_hba.conf patched to trust auth."
+            # Set the postgres password to match the secret (handles existing data dirs)
+            podman exec "$PG_CONTAINER" psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" >/dev/null 2>&1 || true
+            echo "Postgres auth secured with scram-sha-256."
           fi
 
           # Health check
