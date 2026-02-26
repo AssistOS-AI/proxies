@@ -131,15 +131,9 @@ def start_device_flow():
         auth_state["user_code"] = None
         
         try:
-            # Pass identity-provider and region as CLI args to avoid interactive prompts
-            # Don't use unbuffer — it causes duplication issues with interactive prompts
-            cmd = [
-                "kiro-cli", "login",
-                "--license", "pro",
-                "--identity-provider", "https://view.awsapps.com/start",
-                "--region", "us-east-1",
-                "--use-device-flow"
-            ]
+            # Use script to provide a pseudo-TTY (kiro-cli ignores CLI args without one)
+            inner_cmd = "kiro-cli login --license pro --identity-provider https://view.awsapps.com/start --region us-east-1 --use-device-flow"
+            cmd = ["script", "-qc", inner_cmd, "/dev/null"]
             log(f"Running: {' '.join(cmd)}")
 
             proc = subprocess.Popen(
