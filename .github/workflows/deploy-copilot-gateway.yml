@@ -1,0 +1,164 @@
+name: Deploy Copilot Gateway
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'copilot-gateway/**'
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy
+          - restart
+          - stop
+          - status
+
+jobs:
+  deploy-copilot-gateway:
+    name: Deploy Copilot Gateway to Remote Server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Test SSH connection
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} \
+            "echo 'SSH connection OK'"
+
+      # ─── STATUS ─────────────────────────────────────────────────
+      - name: Handle status check
+        if: inputs.action == 'status'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          echo "=== Copilot Gateway Status ==="
+          CONTAINER=$(podman ps --filter "name=copilot-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -n "$CONTAINER" ]; then
+            echo "Container: $CONTAINER (running)"
+            podman logs --tail 10 "$CONTAINER" 2>/dev/null
+          else
+            echo "No copilot-gateway container found"
+          fi
+          EOF
+
+      # ─── STOP ───────────────────────────────────────────────────
+      - name: Handle stop
+        if: inputs.action == 'stop'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          cd ~/soulGateway
+          ploinky stop copilot-gateway 2>&1 || echo "Stop failed - agent may not be running"
+          EOF
+
+      # ─── RESTART ────────────────────────────────────────────────
+      - name: Handle restart
+        if: inputs.action == 'restart'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+          cd ~/soulGateway
+          ploinky restart copilot-gateway || echo "Restart failed"
+          sleep 5
+          CONTAINER=$(podman ps --filter "name=copilot-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          [ -n "$CONTAINER" ] && podman logs --tail 5 "$CONTAINER" 2>/dev/null
+          EOF
+
+      # ─── DEPLOY ─────────────────────────────────────────────────
+      - name: Deploy - Write secrets env file
+        if: inputs.action == 'deploy' || github.event_name == 'push'
+        run: |
+          cat > /tmp/copilot_env << ENVEOF
+          COPILOT_GITHUB_TOKEN=${{ secrets.COPILOT_GITHUB_TOKEN }}
+          ENVEOF
+
+      - name: Deploy - SCP secrets to remote
+        if: inputs.action == 'deploy' || github.event_name == 'push'
+        run: |
+          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            /tmp/copilot_env \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }}:/tmp/copilot_env
+
+      - name: Deploy - Run remote setup
+        if: inputs.action == 'deploy' || github.event_name == 'push'
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'DEPLOY_SCRIPT'
+          set -e
+
+          # Source secrets
+          while IFS='=' read -r key value; do
+            key=$(echo "$key" | xargs)
+            value=$(echo "$value" | xargs)
+            [ -n "$key" ] && export "$key=$value"
+          done < /tmp/copilot_env
+          rm -f /tmp/copilot_env
+
+          WORKSPACE="$HOME/soulGateway"
+          CODE_DIR="$HOME/code"
+
+          echo "=========================================="
+          echo "  Copilot Gateway - Deploy"
+          echo "=========================================="
+
+          # Update proxies repo
+          cd "$CODE_DIR/proxies" && git fetch origin main && git reset --hard origin/main
+
+          cd "$WORKSPACE"
+
+          # Configure env vars
+          if [ -n "$COPILOT_GITHUB_TOKEN" ]; then
+            ploinky var COPILOT_GITHUB_TOKEN "$COPILOT_GITHUB_TOKEN"
+          fi
+
+          # Stop existing if running
+          if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "copilot-gateway"; then
+            echo "Stopping existing copilot-gateway..."
+            ploinky stop copilot-gateway 2>&1 || true
+            ploinky clean copilot-gateway 2>&1 || true
+          fi
+
+          # Enable and start
+          ploinky enable agent copilot-gateway 2>/dev/null || true
+          echo "Starting copilot-gateway..."
+          ploinky start copilot-gateway
+
+          # Health check
+          echo "Waiting for startup..."
+          for i in $(seq 1 15); do
+            sleep 2
+            if curl -sf http://localhost:4141/v1/models > /dev/null 2>&1; then
+              echo ""
+              echo "Copilot Gateway is healthy!"
+              echo ""
+              echo "=========================================="
+              echo "  Deployment Success"
+              echo "=========================================="
+              exit 0
+            fi
+            echo "  Attempt $i/15..."
+          done
+
+          echo "WARNING: Copilot Gateway may need manual auth."
+          echo "Run: ssh to server, cd ~/soulGateway, ploinky cli copilot-gateway auth"
+          DEPLOY_SCRIPT
+
+      - name: Cleanup
+        if: always()
+        run: rm -f ~/.ssh/deploy_key /tmp/copilot_env
