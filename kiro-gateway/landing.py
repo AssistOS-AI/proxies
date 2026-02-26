@@ -131,11 +131,16 @@ def start_device_flow():
         auth_state["user_code"] = None
         
         try:
-            # Use unbuffer to provide a pseudo-TTY for kiro-cli
-            # We need to send multiple inputs: Start URL and Region
-            cmd = ["unbuffer", "-p", "kiro-cli", "login", "--license", "pro", "--use-device-flow"]
+            # Pass identity-provider and region as CLI args to avoid interactive prompts
+            cmd = [
+                "unbuffer", "-p", "kiro-cli", "login",
+                "--license", "pro",
+                "--identity-provider", "https://view.awsapps.com/start",
+                "--region", "us-east-1",
+                "--use-device-flow"
+            ]
             log(f"Running: {' '.join(cmd)}")
-            
+
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
@@ -144,20 +149,6 @@ def start_device_flow():
                 text=True,
                 bufsize=1
             )
-            
-            # Send the Start URL and Region
-            try:
-                time.sleep(0.5)  # Wait for prompts
-                # kiro-cli asks for: Start URL, then Region
-                proc.stdin.write("https://view.awsapps.com/start\n")
-                proc.stdin.flush()
-                log("Sent Start URL to stdin")
-                time.sleep(0.5)
-                proc.stdin.write("us-east-1\n")
-                proc.stdin.flush()
-                log("Sent Region to stdin")
-            except Exception as e:
-                log(f"Failed to send stdin: {e}")
             
             output = ""
             for line in proc.stdout:
