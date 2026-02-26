@@ -132,8 +132,9 @@ def start_device_flow():
         
         try:
             # Pass identity-provider and region as CLI args to avoid interactive prompts
+            # Don't use unbuffer — it causes duplication issues with interactive prompts
             cmd = [
-                "unbuffer", "-p", "kiro-cli", "login",
+                "kiro-cli", "login",
                 "--license", "pro",
                 "--identity-provider", "https://view.awsapps.com/start",
                 "--region", "us-east-1",
