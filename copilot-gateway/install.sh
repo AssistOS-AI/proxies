@@ -8,7 +8,7 @@ cd "$APP_DIR"
 
 # Install copilot-api
 echo "Installing copilot-api..."
-bun add copilot-api@latest
+npm install copilot-api@latest
 
 # Create persistent storage for GitHub tokens
 # /shared is mounted from the workspace and survives container restarts

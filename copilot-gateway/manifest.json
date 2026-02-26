@@ -1,5 +1,5 @@
 {
-    "container": "oven/bun:latest",
+    "container": "node:22-slim",
     "agent": "bash /code/startup.sh",
     "cli": "bash /code/cli.sh",
     "about": "GitHub Copilot API Proxy - OpenAI/Anthropic-compatible API using your GitHub Copilot subscription",
@@ -24,7 +24,7 @@
             "ports": [
                 "4141:4141"
             ],
-            "install": "bash /code/install.sh"
+            "install": "apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
         }
     }
 }

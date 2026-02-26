@@ -16,4 +16,4 @@ if [ $# -eq 0 ]; then
     exit 0
 fi
 
-exec bunx copilot-api@latest "$@"
+exec npx copilot-api@latest "$@"

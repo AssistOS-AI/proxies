@@ -24,4 +24,4 @@ if [ -n "$COPILOT_ACCOUNT_TYPE" ]; then
 fi
 
 cd /app
-exec bunx copilot-api@latest $ARGS
+exec npx copilot-api@latest $ARGS
