@@ -131,10 +131,18 @@ def start_device_flow():
         auth_state["user_code"] = None
         
         try:
-            # Use script to provide a pseudo-TTY (kiro-cli ignores CLI args without one)
-            inner_cmd = "kiro-cli login --license pro --identity-provider https://view.awsapps.com/start --region us-east-1 --use-device-flow"
-            cmd = ["script", "-qc", inner_cmd, "/dev/null"]
+            # Set TERM=dumb so kiro-cli accepts CLI args without real TTY
+            cmd = [
+                "kiro-cli", "login",
+                "--license", "pro",
+                "--identity-provider", "https://view.awsapps.com/start",
+                "--region", "us-east-1",
+                "--use-device-flow"
+            ]
             log(f"Running: {' '.join(cmd)}")
+
+            env = os.environ.copy()
+            env["TERM"] = "dumb"
 
             proc = subprocess.Popen(
                 cmd,
@@ -142,7 +150,8 @@ def start_device_flow():
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.PIPE,
                 text=True,
-                bufsize=1
+                bufsize=1,
+                env=env,
             )
             
             output = ""
