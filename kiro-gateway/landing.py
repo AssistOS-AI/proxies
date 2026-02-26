@@ -131,7 +131,7 @@ def start_device_flow():
         auth_state["user_code"] = None
         
         try:
-            # Set TERM=dumb so kiro-cli accepts CLI args without real TTY
+            import pty
             cmd = [
                 "kiro-cli", "login",
                 "--license", "pro",
@@ -141,48 +141,74 @@ def start_device_flow():
             ]
             log(f"Running: {' '.join(cmd)}")
 
-            env = os.environ.copy()
-            env["TERM"] = "dumb"
-
+            # Use a real pseudo-TTY so kiro-cli's isatty() check passes
+            master_fd, slave_fd = pty.openpty()
             proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                env=env,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                stdin=slave_fd,
+                close_fds=True,
             )
+            os.close(slave_fd)
             
+            # Read output from the PTY master fd
             output = ""
-            for line in proc.stdout:
-                output += line
-                # Only log non-spinner lines to reduce noise
-                stripped = line.strip()
-                if stripped and not stripped.startswith('▰') and not stripped.startswith('▱'):
-                    log(f"kiro-cli: {stripped}")
-                
-                # Extract verification URL - look for AWS device authorization URLs
-                urls = re.findall(r'https://[^\s\]\)\'"<>]+', line)
-                for url in urls:
-                    url = url.rstrip('.,;:')
-                    if 'device' in url.lower() or 'activate' in url.lower() or 'oidc' in url.lower():
-                        auth_state["verification_url"] = url
-                        log(f"Found verification URL: {url}")
-                
-                # Extract user code - various formats
-                code_match = re.search(r'(?:code|Code|CODE)[:\s]+([A-Z0-9]{4,}[-]?[A-Z0-9]*)', line)
-                if code_match:
-                    auth_state["user_code"] = code_match.group(1)
-                    log(f"Found user code: {code_match.group(1)}")
-                
-                # Also look for standalone codes like ABCD-EFGH
-                if not auth_state["user_code"]:
-                    standalone_code = re.search(r'\b([A-Z0-9]{4}-[A-Z0-9]{4})\b', line)
-                    if standalone_code:
-                        auth_state["user_code"] = standalone_code.group(1)
-                        log(f"Found standalone code: {standalone_code.group(1)}")
-            
+            import select
+            while True:
+                # Check if process is done
+                if proc.poll() is not None:
+                    # Drain remaining output
+                    try:
+                        while select.select([master_fd], [], [], 0.1)[0]:
+                            chunk = os.read(master_fd, 4096).decode('utf-8', errors='replace')
+                            if not chunk:
+                                break
+                            output += chunk
+                    except OSError:
+                        pass
+                    break
+
+                # Wait for output with timeout
+                try:
+                    ready, _, _ = select.select([master_fd], [], [], 1.0)
+                    if ready:
+                        chunk = os.read(master_fd, 4096).decode('utf-8', errors='replace')
+                        if not chunk:
+                            break
+                        output += chunk
+
+                        # Process each line for URLs and codes
+                        for line in chunk.split('\n'):
+                            stripped = line.strip()
+                            if stripped and not stripped.startswith('▰') and not stripped.startswith('▱'):
+                                # Strip ANSI escape codes for logging
+                                clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', stripped)
+                                if clean.strip():
+                                    log(f"kiro-cli: {clean.strip()}")
+
+                            # Extract verification URL
+                            urls = re.findall(r'https://[^\s\]\)\'"<>]+', line)
+                            for url in urls:
+                                url = url.rstrip('.,;:')
+                                if 'device' in url.lower() or 'activate' in url.lower() or 'oidc' in url.lower():
+                                    auth_state["verification_url"] = url
+                                    log(f"Found verification URL: {url}")
+
+                            # Extract user code
+                            code_match = re.search(r'(?:code|Code|CODE)[:\s]+([A-Z0-9]{4,}[-]?[A-Z0-9]*)', line)
+                            if code_match:
+                                auth_state["user_code"] = code_match.group(1)
+                                log(f"Found user code: {code_match.group(1)}")
+                            if not auth_state["user_code"]:
+                                standalone_code = re.search(r'\b([A-Z0-9]{4}-[A-Z0-9]{4})\b', line)
+                                if standalone_code:
+                                    auth_state["user_code"] = standalone_code.group(1)
+                                    log(f"Found standalone code: {standalone_code.group(1)}")
+                except OSError:
+                    break
+
+            os.close(master_fd)
             ret = proc.wait(timeout=300)
             log(f"kiro-cli exited with code: {ret}")
             auth_state["active"] = False
@@ -209,7 +235,7 @@ def start_device_flow():
                 auth_state["error"] = "Authentication timed out after 5 minutes"
             log("Timeout - killed process")
         except FileNotFoundError as e:
-            auth_state["error"] = f"unbuffer command not found: {e}"
+            auth_state["error"] = f"kiro-cli not found: {e}"
             auth_state["active"] = False
             log(f"FileNotFoundError: {e}")
         except Exception as e:
