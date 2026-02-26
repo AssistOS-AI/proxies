@@ -178,6 +178,16 @@ def start_device_flow():
                             break
                         output += chunk
 
+                        # Auto-confirm pre-filled prompts by sending Enter
+                        clean_chunk = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', chunk)
+                        if '? Enter Start URL' in clean_chunk or '? Enter Region' in clean_chunk:
+                            time.sleep(0.3)
+                            try:
+                                os.write(master_fd, b'\n')
+                                log("Auto-confirmed prompt with Enter")
+                            except OSError:
+                                pass
+
                         # Process each line for URLs and codes
                         for line in chunk.split('\n'):
                             stripped = line.strip()
