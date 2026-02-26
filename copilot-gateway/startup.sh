@@ -23,9 +23,5 @@ if [ -n "$COPILOT_ACCOUNT_TYPE" ]; then
     ARGS="$ARGS --account-type $COPILOT_ACCOUNT_TYPE"
 fi
 
-if [ -n "$GITHUB_TOKEN" ]; then
-    ARGS="$ARGS --github-token $GITHUB_TOKEN"
-fi
-
 cd /app
 exec bunx copilot-api@latest $ARGS

@@ -10,11 +10,6 @@
                     "required": false,
                     "default": "4141"
                 },
-                "GITHUB_TOKEN": {
-                    "varName": "COPILOT_GITHUB_TOKEN",
-                    "required": false,
-                    "description": "GitHub token for non-interactive auth (skip OAuth flow)"
-                },
                 "COPILOT_ACCOUNT_TYPE": {
                     "required": false,
                     "default": "individual",

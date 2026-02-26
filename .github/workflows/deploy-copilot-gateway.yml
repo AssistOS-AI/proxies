@@ -81,34 +81,12 @@ jobs:
           EOF
 
       # ─── DEPLOY ─────────────────────────────────────────────────
-      - name: Deploy - Write secrets env file
-        if: inputs.action == 'deploy' || github.event_name == 'push'
-        run: |
-          cat > /tmp/copilot_env << ENVEOF
-          COPILOT_GITHUB_TOKEN=${{ secrets.COPILOT_GITHUB_TOKEN }}
-          ENVEOF
-
-      - name: Deploy - SCP secrets to remote
-        if: inputs.action == 'deploy' || github.event_name == 'push'
-        run: |
-          scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            /tmp/copilot_env \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }}:/tmp/copilot_env
-
       - name: Deploy - Run remote setup
         if: inputs.action == 'deploy' || github.event_name == 'push'
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'DEPLOY_SCRIPT'
           set -e
-
-          # Source secrets
-          while IFS='=' read -r key value; do
-            key=$(echo "$key" | xargs)
-            value=$(echo "$value" | xargs)
-            [ -n "$key" ] && export "$key=$value"
-          done < /tmp/copilot_env
-          rm -f /tmp/copilot_env
 
           WORKSPACE="$HOME/soulGateway"
           CODE_DIR="$HOME/code"
@@ -121,11 +99,6 @@ jobs:
           cd "$CODE_DIR/proxies" && git fetch origin main && git reset --hard origin/main
 
           cd "$WORKSPACE"
-
-          # Configure env vars
-          if [ -n "$COPILOT_GITHUB_TOKEN" ]; then
-            ploinky var COPILOT_GITHUB_TOKEN "$COPILOT_GITHUB_TOKEN"
-          fi
 
           # Stop existing if running
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "copilot-gateway"; then
@@ -161,4 +134,4 @@ jobs:
 
       - name: Cleanup
         if: always()
-        run: rm -f ~/.ssh/deploy_key /tmp/copilot_env
+        run: rm -f ~/.ssh/deploy_key
