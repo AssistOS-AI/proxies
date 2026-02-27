@@ -1,10 +1,6 @@
 name: Deploy Soul Gateway
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'soul-gateway/**'
   workflow_dispatch:
     inputs:
       action:
