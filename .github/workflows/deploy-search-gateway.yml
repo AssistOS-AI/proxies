@@ -135,6 +135,7 @@ jobs:
 
           # Configure env vars for search-gateway
           echo "Configuring env vars..."
+          ploinky var PORT "8043"
           ploinky var PGHOST "10.0.2.2"
           ploinky var PGPORT "5432"
           ploinky var PGUSER "postgres"
