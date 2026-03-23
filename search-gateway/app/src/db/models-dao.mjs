@@ -1,7 +1,7 @@
 import { query } from './init.mjs';
 
 export async function listModels(enabledOnly = false) {
-  const where = enabledOnly ? 'WHERE is_enabled = true' : '';
+  const where = enabledOnly ? 'WHERE m.is_enabled = true' : '';
   const { rows } = await query(`
     SELECT m.*, p.name as provider_name, p.display_name as provider_display_name
     FROM search_models m
