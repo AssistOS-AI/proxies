@@ -1,20 +1,25 @@
 {
-    "container": "python:3.11-slim",
+    "container": "node:20-slim",
     "agent": "bash /code/startup.sh",
     "cli": "bash /code/cli.sh",
-    "about": "Kiro Gateway - OpenAI/Anthropic compatible proxy for Kiro API (Claude models via AWS CodeWhisperer)",
+    "about": "Kiro Gateway — OpenAI-compatible proxy for Claude models via Google OAuth with Kiro",
     "profiles": {
         "default": {
             "env": {
                 "PROXY_API_KEY": {
                     "required": false,
                     "default": "kiro-gateway-key"
+                },
+                "DASHBOARD_PASSWORD": {
+                    "required": false,
+                    "default": "$DASHBOARD_PASSWORD"
                 }
             },
             "ports": [
-                "0.0.0.0:8000:8000"
+                "0.0.0.0:8000:8000",
+                "0.0.0.0:3128:3128"
             ],
-            "install": "apt-get update && apt-get install -y --no-install-recommends git curl unzip expect && rm -rf /var/lib/apt/lists/* && bash /code/install.sh"
+            "install": "apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*"
         }
     }
 }
