@@ -133,24 +133,23 @@ jobs:
           mkdir -p "$WORKSPACE/.ploinky/repos"
           ln -sfn "$CODE_DIR/proxies" "$WORKSPACE/.ploinky/repos/proxies"
 
-          # Configure env vars for search-gateway
+          # Configure shared env vars (safe for all agents)
           echo "Configuring env vars..."
-          ploinky var PORT "8043"
           ploinky var PGHOST "10.0.2.2"
           ploinky var PGPORT "5432"
           ploinky var PGUSER "postgres"
           ploinky var PGPASSWORD "$PGPASSWORD"
           ploinky var PGDATABASE "postgres"
 
-          if [ -n "$DASHBOARD_PASSWORD" ]; then
-            ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
-          fi
-          [ -n "$TAVILY_API_KEY" ] && ploinky var TAVILY_API_KEY "$TAVILY_API_KEY"
-          [ -n "$BRAVE_API_KEY" ] && ploinky var BRAVE_API_KEY "$BRAVE_API_KEY"
-          [ -n "$EXA_API_KEY" ] && ploinky var EXA_API_KEY "$EXA_API_KEY"
-          [ -n "$JINA_API_KEY" ] && ploinky var JINA_API_KEY "$JINA_API_KEY"
-          [ -n "$SERPER_API_KEY" ] && ploinky var SERPER_API_KEY "$SERPER_API_KEY"
-          [ -n "$SOUL_GATEWAY_API_KEY" ] && ploinky var SOUL_GATEWAY_API_KEY "$SOUL_GATEWAY_API_KEY"
+          # Per-agent env vars (use expose, not var, to avoid cross-agent conflicts)
+          ploinky expose PORT 8043 search-gateway
+          [ -n "$DASHBOARD_PASSWORD" ] && ploinky expose DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD" search-gateway
+          [ -n "$TAVILY_API_KEY" ] && ploinky expose TAVILY_API_KEY "$TAVILY_API_KEY" search-gateway
+          [ -n "$BRAVE_API_KEY" ] && ploinky expose BRAVE_API_KEY "$BRAVE_API_KEY" search-gateway
+          [ -n "$EXA_API_KEY" ] && ploinky expose EXA_API_KEY "$EXA_API_KEY" search-gateway
+          [ -n "$JINA_API_KEY" ] && ploinky expose JINA_API_KEY "$JINA_API_KEY" search-gateway
+          [ -n "$SERPER_API_KEY" ] && ploinky expose SERPER_API_KEY "$SERPER_API_KEY" search-gateway
+          [ -n "$SOUL_GATEWAY_API_KEY" ] && ploinky expose SOUL_GATEWAY_API_KEY "$SOUL_GATEWAY_API_KEY" search-gateway
 
           # Stop existing if running
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "search-gateway"; then
