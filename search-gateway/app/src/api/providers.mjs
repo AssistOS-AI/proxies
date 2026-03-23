@@ -1,6 +1,10 @@
 import { readJsonBody, sendJson, sendError } from '../utils/http-helpers.mjs';
 import * as dao from '../db/providers-dao.mjs';
+import * as modelsDao from '../db/models-dao.mjs';
 import { createProvider } from '../providers/registry.mjs';
+import { createLogger } from '../utils/logger.mjs';
+
+const log = createLogger('api-providers');
 
 export const handleProviders = {
   async list(req, res, query) {
@@ -16,6 +20,23 @@ export const handleProviders = {
     }
     try {
       const provider = await dao.createProvider(body);
+
+      // Auto-create corresponding search model
+      const modelName = `${provider.name}-search`;
+      try {
+        await modelsDao.createModel({
+          name: modelName,
+          display_name: `${provider.display_name || provider.name} Search`,
+          provider_id: provider.id,
+          model_type: 'search',
+          sort_order: provider.sort_order || 100,
+        });
+        log.info(`Auto-created model: ${modelName}`);
+      } catch (err) {
+        // Model may already exist — not fatal
+        if (err.code !== '23505') log.warn(`Failed to auto-create model ${modelName}`, { error: err.message });
+      }
+
       sendJson(res, provider, 201);
     } catch (err) {
       if (err.code === '23505') {
@@ -33,6 +54,8 @@ export const handleProviders = {
   },
 
   async remove(req, res, params) {
+    // Delete associated search model(s) first
+    await modelsDao.deleteByProviderId(params.id);
     const provider = await dao.deleteProvider(params.id);
     if (!provider) return sendError(res, 404, 'Provider not found');
     sendJson(res, { ok: true });

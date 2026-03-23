@@ -61,3 +61,8 @@ export async function deleteModel(id) {
   const { rows } = await query('DELETE FROM search_models WHERE id = $1 RETURNING id, name', [id]);
   return rows[0] || null;
 }
+
+export async function deleteByProviderId(providerId) {
+  const { rowCount } = await query('DELETE FROM search_models WHERE provider_id = $1', [providerId]);
+  return rowCount;
+}
