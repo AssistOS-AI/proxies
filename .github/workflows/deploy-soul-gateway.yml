@@ -182,10 +182,12 @@ jobs:
           if [ -n "$OPENROUTER_API_KEY" ]; then
             ploinky var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
           fi
-          # Per-agent env vars (use expose, not var, to avoid cross-agent conflicts)
+          # DASHBOARD_PASSWORD must be a global var (ploinky var) because .secrets
+          # takes precedence over ploinky expose, and containers inherit from .secrets
           if [ -n "$DASHBOARD_PASSWORD" ]; then
-            ploinky expose DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD" soul-gateway
+            ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
           fi
+          # Per-agent env vars
           if [ -n "$SEARCH_GATEWAY_API_KEY" ]; then
             ploinky expose SEARCH_GATEWAY_API_KEY "$SEARCH_GATEWAY_API_KEY" soul-gateway
           fi
