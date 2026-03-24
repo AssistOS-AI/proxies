@@ -86,6 +86,7 @@
                 </td>
                 <td>
                   <button class="btn btn-xs btn-ghost" @click="testProvider(p.id)">Test</button>
+                  <button class="btn btn-xs btn-ghost" @click="openEditProvider(p)">Edit</button>
                   <button class="btn btn-xs btn-ghost text-error" @click="deleteProvider(p.id)">Delete</button>
                 </td>
               </tr>
@@ -115,6 +116,29 @@
         </div>
       </div>
     </div>
+
+      <!-- Edit Provider Modal -->
+      <div class="modal" :class="{'modal-open': editingProvider}">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg mb-4">Edit <span x-text="editingProvider?.display_name"></span></h3>
+          <label class="label"><span class="label-text">API Key</span></label>
+          <input class="input input-bordered w-full mb-2" placeholder="Leave blank to keep current" x-model="editForm.api_key" type="password">
+          <label class="label"><span class="label-text">Base URL</span></label>
+          <input class="input input-bordered w-full mb-2" placeholder="Default" x-model="editForm.base_url">
+          <label class="label"><span class="label-text">Monthly Quota</span></label>
+          <input class="input input-bordered w-full mb-2" x-model="editForm.monthly_quota" type="number">
+          <div class="form-control mt-2">
+            <label class="label cursor-pointer justify-start gap-3">
+              <input type="checkbox" class="toggle toggle-success" x-model="editForm.is_enabled">
+              <span class="label-text" x-text="editForm.is_enabled ? 'Enabled' : 'Disabled'"></span>
+            </label>
+          </div>
+          <div class="modal-action">
+            <button class="btn" @click="editingProvider = null">Cancel</button>
+            <button class="btn btn-primary" @click="saveEditProvider()">Save</button>
+          </div>
+        </div>
+      </div>
 
     <!-- MODELS PAGE -->
     <div x-show="page === 'models'" x-cloak>
@@ -298,6 +322,8 @@
       selectedLog: null,
       showAddProvider: false,
       newProvider: { provider_type: '', api_key: '', base_url: '' },
+      editingProvider: null,
+      editForm: { api_key: '', base_url: '', is_enabled: true, monthly_quota: null },
       logFilter: { model: '', status: '' },
 
       async init() {
@@ -342,10 +368,31 @@
         await Promise.all([this.loadProviders(), this.loadModels()]);
       },
 
+      openEditProvider(p) {
+        this.editingProvider = p;
+        this.editForm = {
+          api_key: '',
+          base_url: p.base_url || '',
+          is_enabled: p.is_enabled,
+          monthly_quota: p.monthly_quota,
+        };
+      },
+
+      async saveEditProvider() {
+        const body = {};
+        if (this.editForm.api_key) body.api_key = this.editForm.api_key;
+        if (this.editForm.base_url !== (this.editingProvider.base_url || '')) body.base_url = this.editForm.base_url;
+        if (this.editForm.is_enabled !== this.editingProvider.is_enabled) body.is_enabled = this.editForm.is_enabled;
+        if (this.editForm.monthly_quota != this.editingProvider.monthly_quota) body.monthly_quota = this.editForm.monthly_quota ? parseInt(this.editForm.monthly_quota) : null;
+        await this.api('/providers/' + this.editingProvider.id, { method: 'PUT', body: JSON.stringify(body) });
+        this.editingProvider = null;
+        await this.loadProviders();
+      },
+
       async deleteProvider(id) {
         if (!confirm('Delete this provider?')) return;
         await this.api('/providers/' + id, { method: 'DELETE' });
-        await this.loadProviders();
+        await Promise.all([this.loadProviders(), this.loadModels()]);
       },
 
       async testProvider(id) {
