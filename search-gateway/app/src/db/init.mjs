@@ -91,67 +91,25 @@ async function ensurePartitions() {
   }
 }
 
-const SEED_PROVIDERS = [
-  { name: 'tavily',     display_name: 'Tavily',     provider_type: 'tavily',     envVar: 'TAVILY_API_KEY',  monthly_quota: 1000, sort_order: 10 },
-  { name: 'brave',      display_name: 'Brave Search', provider_type: 'brave',    envVar: 'BRAVE_API_KEY',   monthly_quota: 1000, sort_order: 20 },
-  { name: 'exa',        display_name: 'Exa',        provider_type: 'exa',        envVar: 'EXA_API_KEY',     monthly_quota: 1000, sort_order: 30 },
-  { name: 'jina',       display_name: 'Jina AI',    provider_type: 'jina',       envVar: 'JINA_API_KEY',    monthly_quota: null, sort_order: 40 },
-  { name: 'serper',     display_name: 'Serper',      provider_type: 'serper',    envVar: 'SERPER_API_KEY',  monthly_quota: 2500, sort_order: 50 },
-  { name: 'duckduckgo', display_name: 'DuckDuckGo',  provider_type: 'duckduckgo', envVar: null,            monthly_quota: null, sort_order: 60 },
-  { name: 'searxng',    display_name: 'SearXNG',     provider_type: 'searxng',   envVar: 'SEARXNG_URL',     monthly_quota: null, sort_order: 70 },
-];
-
 async function seedProviders() {
-  const { encrypt } = await import('../utils/crypto.mjs');
-
-  for (const prov of SEED_PROVIDERS) {
-    // Check if provider already exists
-    const { rows } = await query('SELECT id FROM search_providers WHERE name = $1', [prov.name]);
-    if (rows.length > 0) continue;
-
-    const envValue = prov.envVar ? process.env[prov.envVar] : null;
-
-    // Skip providers without API keys (except keyless ones like duckduckgo/searxng)
-    if (prov.envVar && !envValue) continue;
-
-    // For SearXNG, envValue is a URL, not an API key
-    let encApiKey = null;
-    let keyHint = null;
-    let baseUrl = null;
-
-    if (prov.provider_type === 'searxng') {
-      baseUrl = envValue;
-    } else if (prov.provider_type === 'duckduckgo') {
-      // No key needed
-    } else if (envValue) {
-      encApiKey = encrypt(envValue);
-      keyHint = envValue.length > 12
-        ? envValue.slice(0, 8) + '...' + envValue.slice(-4)
-        : envValue.slice(0, 4) + '...';
-    }
-
-    const nextMonth = new Date();
-    nextMonth.setUTCMonth(nextMonth.getUTCMonth() + 1, 1);
-    nextMonth.setUTCHours(0, 0, 0, 0);
-
+  // Only seed DuckDuckGo (keyless, always available).
+  // All other providers are managed via the dashboard.
+  const { rows } = await query('SELECT id FROM search_providers WHERE name = $1', ['duckduckgo']);
+  if (rows.length === 0) {
     await query(`
-      INSERT INTO search_providers (name, display_name, provider_type, base_url, encrypted_api_key, key_hint, monthly_quota, quota_reset_at, sort_order)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO search_providers (name, display_name, provider_type, monthly_quota, sort_order)
+      VALUES ('duckduckgo', 'DuckDuckGo', 'duckduckgo', NULL, 60)
       ON CONFLICT (name) DO NOTHING
-    `, [prov.name, prov.display_name, prov.provider_type, baseUrl, encApiKey, keyHint, prov.monthly_quota, nextMonth, prov.sort_order]);
-
-    // Create corresponding search model
-    const providerRow = await query('SELECT id FROM search_providers WHERE name = $1', [prov.name]);
+    `);
+    const providerRow = await query('SELECT id FROM search_providers WHERE name = $1', ['duckduckgo']);
     if (providerRow.rows.length > 0) {
-      const modelName = `${prov.name}-search`;
       await query(`
         INSERT INTO search_models (name, display_name, provider_id, model_type, sort_order)
-        VALUES ($1, $2, $3, 'search', $4)
+        VALUES ('duckduckgo-search', 'DuckDuckGo Search', $1, 'search', 60)
         ON CONFLICT (name) DO NOTHING
-      `, [modelName, `${prov.display_name} Search`, providerRow.rows[0].id, prov.sort_order]);
+      `, [providerRow.rows[0].id]);
     }
-
-    log.info(`Seeded provider: ${prov.name}`);
+    log.info('Seeded provider: duckduckgo');
   }
 
   // Seed deep-research model if soul-gateway is configured

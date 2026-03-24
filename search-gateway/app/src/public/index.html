@@ -98,24 +98,19 @@
       <div class="modal" :class="{'modal-open': showAddProvider}">
         <div class="modal-box">
           <h3 class="font-bold text-lg mb-4">Add Search Provider</h3>
-          <input class="input input-bordered w-full mb-2" placeholder="Name (e.g. tavily)" x-model="newProvider.name">
-          <input class="input input-bordered w-full mb-2" placeholder="Display Name" x-model="newProvider.display_name">
           <select class="select select-bordered w-full mb-2" x-model="newProvider.provider_type">
-            <option value="">Select type...</option>
-            <option value="tavily">Tavily</option>
-            <option value="brave">Brave</option>
-            <option value="exa">Exa</option>
-            <option value="jina">Jina</option>
-            <option value="serper">Serper</option>
-            <option value="duckduckgo">DuckDuckGo</option>
-            <option value="searxng">SearXNG</option>
+            <option value="">Select provider...</option>
+            <template x-for="[key, meta] of Object.entries(PROVIDER_META)" :key="key">
+              <option :value="key" x-text="meta.display_name"></option>
+            </template>
           </select>
-          <input class="input input-bordered w-full mb-2" placeholder="API Key" x-model="newProvider.api_key" type="password">
-          <input class="input input-bordered w-full mb-2" placeholder="Base URL (optional)" x-model="newProvider.base_url">
-          <input class="input input-bordered w-full mb-2" placeholder="Monthly Quota" x-model="newProvider.monthly_quota" type="number">
+          <input class="input input-bordered w-full mb-2" placeholder="API Key" x-model="newProvider.api_key" type="password"
+            x-show="newProvider.provider_type && PROVIDER_META[newProvider.provider_type]?.needs_key !== false">
+          <input class="input input-bordered w-full mb-2" placeholder="Instance URL (required)" x-model="newProvider.base_url"
+            x-show="newProvider.provider_type === 'searxng'">
           <div class="modal-action">
             <button class="btn" @click="showAddProvider = false">Cancel</button>
-            <button class="btn btn-primary" @click="addProvider()">Add</button>
+            <button class="btn btn-primary" @click="addProvider()" :disabled="!newProvider.provider_type">Add</button>
           </div>
         </div>
       </div>
@@ -278,8 +273,20 @@
   </div>
 
   <script>
+  const PROVIDER_META = {
+    tavily:     { name: 'tavily',     display_name: 'Tavily',        quota: 1000 },
+    brave:      { name: 'brave',      display_name: 'Brave Search',  quota: 1000 },
+    exa:        { name: 'exa',        display_name: 'Exa',           quota: 1000 },
+    gemini:     { name: 'gemini',     display_name: 'Gemini Search', quota: 5000 },
+    jina:       { name: 'jina',       display_name: 'Jina AI',       quota: null },
+    serper:     { name: 'serper',     display_name: 'Serper',         quota: 2500 },
+    duckduckgo: { name: 'duckduckgo', display_name: 'DuckDuckGo',    quota: null, needs_key: false },
+    searxng:    { name: 'searxng',    display_name: 'SearXNG',        quota: null, needs_key: false },
+  };
+
   function app() {
     return {
+      PROVIDER_META,
       page: 'providers',
       providers: [],
       models: [],
@@ -290,7 +297,7 @@
       newKey: null,
       selectedLog: null,
       showAddProvider: false,
-      newProvider: { name: '', display_name: '', provider_type: '', api_key: '', base_url: '', monthly_quota: null },
+      newProvider: { provider_type: '', api_key: '', base_url: '' },
       logFilter: { model: '', status: '' },
 
       async init() {
@@ -319,13 +326,20 @@
       async loadErrors() { this.errors = await this.api('/metrics/errors'); },
 
       async addProvider() {
-        const body = { ...this.newProvider };
-        if (body.monthly_quota) body.monthly_quota = parseInt(body.monthly_quota);
-        else delete body.monthly_quota;
+        const meta = PROVIDER_META[this.newProvider.provider_type];
+        if (!meta) return;
+        const body = {
+          name: meta.name,
+          display_name: meta.display_name,
+          provider_type: this.newProvider.provider_type,
+          api_key: this.newProvider.api_key || undefined,
+          base_url: this.newProvider.base_url || undefined,
+          monthly_quota: meta.quota || undefined,
+        };
         await this.api('/providers', { method: 'POST', body: JSON.stringify(body) });
         this.showAddProvider = false;
-        this.newProvider = { name: '', display_name: '', provider_type: '', api_key: '', base_url: '', monthly_quota: null };
-        await this.loadProviders();
+        this.newProvider = { provider_type: '', api_key: '', base_url: '' };
+        await Promise.all([this.loadProviders(), this.loadModels()]);
       },
 
       async deleteProvider(id) {

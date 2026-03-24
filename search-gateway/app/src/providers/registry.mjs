@@ -5,6 +5,7 @@ import JinaProvider from './jina.mjs';
 import DuckDuckGoProvider from './duckduckgo.mjs';
 import SearXNGProvider from './searxng.mjs';
 import SerperProvider from './serper.mjs';
+import GeminiProvider from './gemini.mjs';
 
 const PROVIDERS = new Map([
   ['tavily', TavilyProvider],
@@ -14,6 +15,7 @@ const PROVIDERS = new Map([
   ['duckduckgo', DuckDuckGoProvider],
   ['searxng', SearXNGProvider],
   ['serper', SerperProvider],
+  ['gemini', GeminiProvider],
 ]);
 
 export function getProviderClass(type) {

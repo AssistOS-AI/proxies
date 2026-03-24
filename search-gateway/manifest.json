@@ -17,12 +17,6 @@
                 "PGDATABASE": { "required": false, "default": "postgres" },
                 "ENCRYPTION_KEY": { "required": false, "default": "", "description": "AES-256 key for API key encryption (auto-generated if empty)" },
                 "DASHBOARD_PASSWORD": { "required": false, "default": "", "description": "Password for dashboard access (empty = no auth)" },
-                "TAVILY_API_KEY": { "required": false, "default": "" },
-                "BRAVE_API_KEY": { "required": false, "default": "" },
-                "EXA_API_KEY": { "required": false, "default": "" },
-                "JINA_API_KEY": { "required": false, "default": "" },
-                "SERPER_API_KEY": { "required": false, "default": "" },
-                "SEARXNG_URL": { "required": false, "default": "", "description": "SearXNG instance URL (e.g. http://localhost:8888)" },
                 "SOUL_GATEWAY_API_KEY": { "required": false, "default": "", "description": "For deep-research LLM calls" },
                 "SOUL_GATEWAY_URL": { "required": false, "default": "http://10.0.2.2:8042/v1/chat/completions", "description": "Soul Gateway URL for deep-research" }
             },
