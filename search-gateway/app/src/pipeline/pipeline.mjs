@@ -71,7 +71,14 @@ export async function pipeline(req, res, body) {
 
     // 9. Dispatch to search provider
     const provider = createProvider(route.providerType, route.apiKey, route.baseUrl, route.providerConfig);
-    const results = await provider.search(searchQuery, { ...route.modelConfig, ...searchParams });
+    let results;
+    try {
+      results = await provider.search(searchQuery, { ...route.modelConfig, ...searchParams });
+    } catch (provErr) {
+      // Surface provider errors with the actual message instead of generic 500
+      const { ProviderError } = await import('../utils/errors.mjs');
+      throw new ProviderError(route.providerType, provErr.message);
+    }
     logEntry.result_count = results.length;
 
     // Track usage
