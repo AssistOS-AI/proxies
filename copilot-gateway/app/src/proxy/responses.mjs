@@ -73,17 +73,20 @@ export async function handleResponsesTranslated(body, req, res, headers, request
     return sendError(res, 502, `Upstream responses error: ${err.message}`);
   }
 
-  // Check for "unsupported_api_for_model" 400 error
-  if (response.status === 400) {
+  // Check for errors before converting
+  if (!response.ok) {
     const data = await response.json().catch(() => null);
-    const errorMsg = data?.error?.message || data?.message || '';
-    if (errorMsg.includes('unsupported_api_for_model')) {
-      const err = new Error('unsupported_api_for_model');
-      err.code = 'UNSUPPORTED_API_FOR_MODEL';
-      throw err;
+    // 400 with "unsupported_api_for_model": signal fallback to completions endpoint
+    if (response.status === 400) {
+      const errorMsg = data?.error?.message || data?.message || '';
+      if (errorMsg.includes('unsupported_api_for_model')) {
+        const err = new Error('unsupported_api_for_model');
+        err.code = 'UNSUPPORTED_API_FOR_MODEL';
+        throw err;
+      }
     }
-    // Other 400 errors: forward as-is
-    return sendJson(res, data, 400);
+    // All other errors: forward upstream error as-is
+    return sendJson(res, data || { error: { message: `Upstream error (${response.status})` } }, response.status);
   }
 
   if (!body.stream) {
