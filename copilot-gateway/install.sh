@@ -2,38 +2,46 @@
 set -e
 
 APP_DIR="/app"
+CODE_DIR="/code"
+SHARED_DIR="/shared/copilot-gateway"
 
+echo "============================================"
+echo "  Copilot Gateway - Installation"
+echo "============================================"
+echo ""
+
+# Create persistent storage
+mkdir -p "$SHARED_DIR/data"
+
+# Copy application code
 mkdir -p "$APP_DIR"
-cd "$APP_DIR"
+if [ -d "$CODE_DIR/app" ]; then
+    cp -r "$CODE_DIR/app/"* "$APP_DIR/" 2>/dev/null || true
+    echo "Application code copied to $APP_DIR"
+fi
 
-# Install copilot-api
-echo "Installing copilot-api..."
-npm install copilot-api@latest
-
-# Create persistent storage for GitHub tokens
-# /shared is mounted from the workspace and survives container restarts
-mkdir -p /shared/copilot-api/data
-mkdir -p /root/.local/share
-
-# Symlink copilot-api's data directory to persistent storage
-if [ ! -L "/root/.local/share/copilot-api" ]; then
-    rm -rf /root/.local/share/copilot-api 2>/dev/null || true
-    ln -sf /shared/copilot-api/data /root/.local/share/copilot-api
+# Migrate tokens from old copilot-api gateway (if upgrading)
+OLD_TOKEN="/shared/copilot-api/data/github_token"
+NEW_TOKEN="$SHARED_DIR/data/github_token"
+if [ -f "$OLD_TOKEN" ] && [ ! -f "$NEW_TOKEN" ]; then
+    cp "$OLD_TOKEN" "$NEW_TOKEN"
+    echo "Migrated GitHub token from previous copilot-api gateway"
 fi
 
 echo ""
-echo "================================================"
-echo "  Copilot API Gateway - Installation Complete"
-echo "================================================"
-echo "  The proxy will start on port ${PORT:-4141}"
+echo "============================================"
+echo "  Installation Complete"
+echo "============================================"
+echo "  The gateway will start on port ${PORT:-4141}"
 echo ""
 echo "  Authentication:"
 echo "    Option 1: Set COPILOT_GITHUB_TOKEN in ploinky secrets"
 echo "    Option 2: Run 'ploinky cli copilot-gateway auth'"
-echo "              to complete GitHub OAuth flow"
+echo "              to complete GitHub OAuth device flow"
 echo ""
 echo "  Endpoints:"
-echo "    POST /v1/chat/completions  (OpenAI-compatible)"
-echo "    POST /v1/messages          (Anthropic-compatible)"
+echo "    POST /v1/chat/completions  (auto-routes to completions or responses)"
+echo "    POST /v1/responses         (direct Responses API passthrough)"
 echo "    GET  /v1/models            (model listing)"
-echo "================================================"
+echo "    GET  /health               (health check)"
+echo "============================================"

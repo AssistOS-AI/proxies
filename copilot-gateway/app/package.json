@@ -1,0 +1,11 @@
+{
+  "name": "copilot-gateway",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "GitHub Copilot API Gateway - OpenAI-compatible proxy with Responses API support",
+  "main": "src/index.mjs",
+  "scripts": {
+    "start": "node src/index.mjs",
+    "dev": "node --watch src/index.mjs"
+  }
+}

@@ -1,27 +1,27 @@
 #!/bin/bash
+set -e
+
+APP_DIR="/app"
+CODE_DIR="/code"
+SHARED_DIR="/shared/copilot-gateway"
 
 export PORT="${PORT:-4141}"
 
-# Ensure persistent storage symlink exists
-mkdir -p /shared/copilot-api/data
-mkdir -p /root/.local/share
-if [ ! -L "/root/.local/share/copilot-api" ]; then
-    rm -rf /root/.local/share/copilot-api 2>/dev/null || true
-    ln -sf /shared/copilot-api/data /root/.local/share/copilot-api
+# Ensure persistent storage
+mkdir -p "$SHARED_DIR/data"
+
+# Update application code (hot-reload on restart)
+if [ -d "$CODE_DIR/app" ]; then
+    mkdir -p "$APP_DIR"
+    cp -r "$CODE_DIR/app/"* "$APP_DIR/" 2>/dev/null || true
 fi
 
-echo "Starting Copilot API Gateway on port $PORT..."
-
-# Build args
-ARGS="start --port $PORT"
-
-if [ "$COPILOT_VERBOSE" = "true" ]; then
-    ARGS="$ARGS --verbose"
+# Write env token to file if set (allows ploinky secret to override stored token)
+if [ -n "$COPILOT_GITHUB_TOKEN" ]; then
+    echo -n "$COPILOT_GITHUB_TOKEN" > "$SHARED_DIR/data/github_token"
 fi
 
-if [ -n "$COPILOT_ACCOUNT_TYPE" ]; then
-    ARGS="$ARGS --account-type $COPILOT_ACCOUNT_TYPE"
-fi
+echo "Starting Copilot Gateway on port $PORT..."
 
-cd /app
-exec npx copilot-api@latest $ARGS
+cd "$APP_DIR"
+exec node src/index.mjs
