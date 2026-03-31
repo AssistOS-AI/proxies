@@ -439,8 +439,9 @@ blockquote {
 
 /* Diagram (ASCII) */
 .diagram {
-  background: var(--card);
-  border: 1px solid var(--border);
+  background: #1a2332;
+  color: #e2e8f0;
+  border: none;
   border-radius: 8px;
   padding: 24px;
   margin: 1.5em 0;
