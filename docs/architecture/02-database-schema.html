@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Database Schema - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Architecture</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Part 2</span>
+        <h1>Database Schema</h1>
+        <p>All PostgreSQL tables, their columns, indexes, monthly partitioning of call logs, and the incremental migration strategy used by Soul Gateway.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Overview</h2>
+        <p>Soul Gateway stores all persistent state in PostgreSQL under the <code>soul_gateway</code> schema. The database is initialized by <code>db/init.mjs</code>, which runs the DDL from <code>schema.sql</code>, applies incremental migrations, creates monthly partitions, and seeds default data. The connection pool is configured with a maximum of 20 connections, and every query sets <code>search_path TO soul_gateway, public</code>.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>api_keys</h2>
+        <p>Stores API keys used by clients to authenticate against the gateway. Each key is stored as both a SHA-256 hash (for lookup) and an encrypted copy (for display hints).</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID PK</code></td><td>Auto-generated primary key</td></tr>
+            <tr><td><code>key_hash</code></td><td><code>TEXT UNIQUE NOT NULL</code></td><td>SHA-256 hash of the raw API key (lookup index)</td></tr>
+            <tr><td><code>encrypted_key</code></td><td><code>BYTEA NOT NULL</code></td><td>Encrypted copy of the key (for admin display)</td></tr>
+            <tr><td><code>label</code></td><td><code>TEXT</code></td><td>Human-readable label (e.g., "Production")</td></tr>
+            <tr><td><code>key_hint</code></td><td><code>TEXT</code></td><td>Masked hint (e.g., "sk-soul-36cc...c01b")</td></tr>
+            <tr><td><code>monthly_budget</code></td><td><code>NUMERIC</code></td><td>Monthly spending limit in USD (default $10 via migration)</td></tr>
+            <tr><td><code>daily_budget</code></td><td><code>NUMERIC DEFAULT 2</code></td><td>Daily spending limit in USD</td></tr>
+            <tr><td><code>rpm_limit</code></td><td><code>INT DEFAULT 60</code></td><td>Requests per minute limit</td></tr>
+            <tr><td><code>tpm_limit</code></td><td><code>INT DEFAULT 100000</code></td><td>Tokens per minute limit</td></tr>
+            <tr><td><code>expires_at</code></td><td><code>TIMESTAMPTZ</code></td><td>Optional expiration timestamp</td></tr>
+            <tr><td><code>is_revoked</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Soft-delete flag</td></tr>
+            <tr><td><code>budget_reset_at</code></td><td><code>TIMESTAMPTZ</code></td><td>Allows mid-month budget reset</td></tr>
+            <tr><td><code>last_used_at</code></td><td><code>TIMESTAMPTZ</code></td><td>Updated on each authenticated request</td></tr>
+            <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <p><strong>Removed columns:</strong> <code>family_id</code> and <code>key_type</code> were dropped during the families-removal and key-simplification migrations. All keys are now permanent and standalone with per-key rate limits and budgets.</p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>model_configs</h2>
+        <p>Unified table for both individual models and tiers. The <code>type</code> column distinguishes between them. Tiers use <code>model_refs</code> and <code>fallback_model</code> instead of provider fields.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID PK</code></td><td>Auto-generated primary key</td></tr>
+            <tr><td><code>name</code></td><td><code>TEXT UNIQUE NOT NULL</code></td><td>Model identifier (e.g., <code>axl/copilot/gpt-4o</code>)</td></tr>
+            <tr><td><code>display_name</code></td><td><code>TEXT</code></td><td>Human-friendly name</td></tr>
+            <tr><td><code>type</code></td><td><code>TEXT NOT NULL DEFAULT 'model'</code></td><td><code>'model'</code> or <code>'tier'</code> (CHECK constraint)</td></tr>
+            <tr><td><code>upstream_model</code></td><td><code>TEXT</code></td><td>Legacy upstream model name (nullable)</td></tr>
+            <tr><td><code>provider_key</code></td><td><code>TEXT</code></td><td>References a provider_configs.name</td></tr>
+            <tr><td><code>provider_model</code></td><td><code>TEXT</code></td><td>Model name as sent to the upstream provider</td></tr>
+            <tr><td><code>provider_config_id</code></td><td><code>UUID FK</code></td><td>References provider_configs(id), SET NULL on delete</td></tr>
+            <tr><td><code>upstream_source</code></td><td><code>TEXT</code></td><td>Source classification (e.g., <code>openai</code>, <code>anthropic</code>, <code>google</code>)</td></tr>
+            <tr><td><code>mode</code></td><td><code>TEXT DEFAULT 'deep'</code></td><td>Routing mode hint</td></tr>
+            <tr><td><code>input_price</code></td><td><code>NUMERIC DEFAULT 0</code></td><td>Price per 1M input tokens (USD)</td></tr>
+            <tr><td><code>output_price</code></td><td><code>NUMERIC DEFAULT 0</code></td><td>Price per 1M output tokens (USD)</td></tr>
+            <tr><td><code>pricing_type</code></td><td><code>TEXT DEFAULT 'token'</code></td><td><code>'token'</code> or <code>'request'</code></td></tr>
+            <tr><td><code>request_cost</code></td><td><code>NUMERIC DEFAULT 0</code></td><td>Flat cost per request (for request-priced models)</td></tr>
+            <tr><td><code>max_concurrency</code></td><td><code>INT DEFAULT 3</code></td><td>Maximum concurrent requests to this model</td></tr>
+            <tr><td><code>sort_order</code></td><td><code>INT DEFAULT 100</code></td><td>Display ordering in /v1/models</td></tr>
+            <tr><td><code>context_window</code></td><td><code>TEXT</code></td><td>Context window description (e.g., "200k")</td></tr>
+            <tr><td><code>is_enabled</code></td><td><code>BOOLEAN DEFAULT true</code></td><td>Soft-disable toggle</td></tr>
+            <tr><td><code>is_free</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Free models don't count against API key budget</td></tr>
+            <tr><td><code>tags</code></td><td><code>TEXT[] DEFAULT '{}'</code></td><td>Tag array for tag-based model selection</td></tr>
+            <tr><td><code>model_refs</code></td><td><code>TEXT[] DEFAULT '{}'</code></td><td>Tier only: ordered list of model names in priority order</td></tr>
+            <tr><td><code>fallback_model</code></td><td><code>TEXT</code></td><td>Tier only: fallback tier/model name if all refs exhausted</td></tr>
+            <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <p><strong>Unified design:</strong> Tiers were originally a separate <code>model_tiers</code> table. A migration in <code>init.mjs</code> copies tier data into <code>model_configs</code> with <code>type = 'tier'</code>, migrates <code>tier_middlewares</code> into <code>model_middlewares</code>, then drops the old tables.</p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>provider_configs</h2>
+        <p>Stores upstream LLM provider connection details. Each provider has a protocol, base URL, and either an encrypted API key or managed OAuth credentials on disk.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID PK</code></td><td>Auto-generated primary key</td></tr>
+            <tr><td><code>name</code></td><td><code>TEXT UNIQUE NOT NULL</code></td><td>Provider slug (e.g., <code>copilot</code>, <code>openai</code>)</td></tr>
+            <tr><td><code>display_name</code></td><td><code>TEXT</code></td><td>Human-friendly name</td></tr>
+            <tr><td><code>protocol</code></td><td><code>TEXT NOT NULL DEFAULT 'openai'</code></td><td>API protocol (<code>openai</code>, <code>anthropic</code>, etc.)</td></tr>
+            <tr><td><code>base_url</code></td><td><code>TEXT NOT NULL</code></td><td>Base URL for API calls</td></tr>
+            <tr><td><code>encrypted_api_key</code></td><td><code>BYTEA</code></td><td>Encrypted API key (nullable for managed-auth providers)</td></tr>
+            <tr><td><code>key_hint</code></td><td><code>TEXT</code></td><td>Masked key hint for admin display</td></tr>
+            <tr><td><code>billing_type</code></td><td><code>TEXT DEFAULT 'api_key'</code></td><td><code>'api_key'</code> or <code>'subscription'</code></td></tr>
+            <tr><td><code>auth_type</code></td><td><code>TEXT DEFAULT 'api_key'</code></td><td><code>'api_key'</code>, <code>'managed'</code>, or <code>'internal'</code></td></tr>
+            <tr><td><code>is_enabled</code></td><td><code>BOOLEAN DEFAULT true</code></td><td>Soft-disable toggle</td></tr>
+            <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
+            <tr><td><code>updated_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Last update timestamp</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>call_logs (Partitioned)</h2>
+        <p>The main audit trail. Every pipeline request generates one row regardless of success or failure. The table is partitioned by <code>RANGE (started_at)</code> on monthly boundaries.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID DEFAULT gen_random_uuid()</code></td><td>Row ID (part of composite PK with started_at)</td></tr>
+            <tr><td><code>soul_id</code></td><td><code>TEXT</code></td><td>Soul identifier from X-Soul-Id header</td></tr>
+            <tr><td><code>api_key_id</code></td><td><code>UUID</code></td><td>Which API key was used</td></tr>
+            <tr><td><code>agent_name</code></td><td><code>TEXT</code></td><td>Agent name from X-Soul-Agent header</td></tr>
+            <tr><td><code>session_id</code></td><td><code>UUID</code></td><td>Session ID from X-Soul-Session header</td></tr>
+            <tr><td colspan="3"><strong>Request fields</strong></td></tr>
+            <tr><td><code>requested_model</code></td><td><code>TEXT</code></td><td>Model name as sent by client</td></tr>
+            <tr><td><code>resolved_model</code></td><td><code>TEXT</code></td><td>Actual model used after routing</td></tr>
+            <tr><td><code>mode</code></td><td><code>TEXT</code></td><td>Routing mode</td></tr>
+            <tr><td><code>is_streaming</code></td><td><code>BOOLEAN</code></td><td>Whether stream=true was requested</td></tr>
+            <tr><td><code>request_messages</code></td><td><code>JSONB</code></td><td>Full messages array</td></tr>
+            <tr><td><code>request_size_bytes</code></td><td><code>INT</code></td><td>Byte size of the request</td></tr>
+            <tr><td colspan="3"><strong>Response fields</strong></td></tr>
+            <tr><td><code>response_content</code></td><td><code>TEXT</code></td><td>Full response text</td></tr>
+            <tr><td><code>status_code</code></td><td><code>INT</code></td><td>HTTP status (200, 400, 401, 429, 502, etc.)</td></tr>
+            <tr><td><code>stop_reason</code></td><td><code>TEXT</code></td><td>Finish reason (stop, length, tool_calls, error)</td></tr>
+            <tr><td><code>error_type</code></td><td><code>TEXT</code></td><td>Error classification (null on success)</td></tr>
+            <tr><td><code>error_message</code></td><td><code>TEXT</code></td><td>Error message (null on success)</td></tr>
+            <tr><td><code>response_size_bytes</code></td><td><code>INT</code></td><td>Byte size of the response content</td></tr>
+            <tr><td colspan="3"><strong>Metrics</strong></td></tr>
+            <tr><td><code>latency_ms</code></td><td><code>INT</code></td><td>Total request duration in milliseconds</td></tr>
+            <tr><td><code>ttfb_ms</code></td><td><code>INT</code></td><td>Time to first byte (first chunk from provider)</td></tr>
+            <tr><td><code>prompt_tokens</code></td><td><code>INT</code></td><td>Input tokens consumed</td></tr>
+            <tr><td><code>completion_tokens</code></td><td><code>INT</code></td><td>Output tokens generated</td></tr>
+            <tr><td><code>total_tokens</code></td><td><code>INT</code></td><td>Total token count</td></tr>
+            <tr><td><code>input_cost</code></td><td><code>NUMERIC</code></td><td>Cost of input tokens (USD)</td></tr>
+            <tr><td><code>output_cost</code></td><td><code>NUMERIC</code></td><td>Cost of output tokens (USD)</td></tr>
+            <tr><td><code>total_cost</code></td><td><code>NUMERIC</code></td><td>Total cost of the request (USD)</td></tr>
+            <tr><td colspan="3"><strong>Retry &amp; Flags</strong></td></tr>
+            <tr><td><code>retry_count</code></td><td><code>INT DEFAULT 0</code></td><td>Number of HTTP-level retries</td></tr>
+            <tr><td><code>retry_reason</code></td><td><code>TEXT</code></td><td>Classification of the retried error</td></tr>
+            <tr><td><code>retries_detail</code></td><td><code>JSONB</code></td><td>Array of { attempt, status, error_type, delay_ms }</td></tr>
+            <tr><td><code>blocked_by_blacklist</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Whether request was blocked by content policy</td></tr>
+            <tr><td><code>blacklist_rule_id</code></td><td><code>UUID</code></td><td>Which blacklist rule matched</td></tr>
+            <tr><td><code>blacklist_match</code></td><td><code>TEXT</code></td><td>The matched content</td></tr>
+            <tr><td><code>is_truncated</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Finish reason was not 'stop'</td></tr>
+            <tr><td><code>is_slow</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Latency exceeded slowRequestMs threshold</td></tr>
+            <tr><td><code>prompt_size_warning</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Prompt exceeded token warning threshold</td></tr>
+            <tr><td><code>is_free</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Denormalized: whether model is free</td></tr>
+            <tr><td colspan="3"><strong>Cache</strong></td></tr>
+            <tr><td><code>prompt_hash</code></td><td><code>TEXT</code></td><td>SHA-256 hash of messages + model</td></tr>
+            <tr><td><code>cache_hit</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Whether this was served from cache</td></tr>
+            <tr><td colspan="3"><strong>Timestamps</strong></td></tr>
+            <tr><td><code>started_at</code></td><td><code>TIMESTAMPTZ NOT NULL</code></td><td>When the request began (part of composite PK)</td></tr>
+            <tr><td><code>completed_at</code></td><td><code>TIMESTAMPTZ</code></td><td>When the request finished</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Monthly Partitioning</h3>
+        <p>The <code>call_logs</code> table uses <code>PARTITION BY RANGE (started_at)</code>. The <code>ensurePartitions()</code> function in <code>init.mjs</code> creates partition tables for the current month plus the next 3 months on every startup. Each partition covers a single calendar month:</p>
+        <pre><code>call_logs_2026_03  -- 2026-03-01 to 2026-04-01
+call_logs_2026_04  -- 2026-04-01 to 2026-05-01
+...</code></pre>
+        <p>The composite primary key <code>(id, started_at)</code> is required by PostgreSQL for range-partitioned tables -- the partition key must be part of the primary key.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>blacklist_rules</h2>
+        <p>Content moderation rules that block requests matching specific patterns.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID PK</code></td><td>Auto-generated primary key</td></tr>
+            <tr><td><code>pattern</code></td><td><code>TEXT NOT NULL</code></td><td>Pattern to match against prompt content</td></tr>
+            <tr><td><code>match_type</code></td><td><code>TEXT NOT NULL</code></td><td><code>'exact'</code>, <code>'substring'</code>, or <code>'regex'</code> (CHECK constraint)</td></tr>
+            <tr><td><code>action</code></td><td><code>TEXT DEFAULT 'block'</code></td><td>Action to take on match</td></tr>
+            <tr><td><code>description</code></td><td><code>TEXT</code></td><td>Human-readable description of the rule</td></tr>
+            <tr><td><code>is_enabled</code></td><td><code>BOOLEAN DEFAULT true</code></td><td>Soft-disable toggle</td></tr>
+            <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>middlewares</h2>
+        <p>Registry of discovered middleware plugins. Populated automatically by <code>scanMiddlewares()</code> on startup.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID PK</code></td><td>Auto-generated primary key</td></tr>
+            <tr><td><code>name</code></td><td><code>TEXT UNIQUE NOT NULL</code></td><td>Middleware name (from module export)</td></tr>
+            <tr><td><code>description</code></td><td><code>TEXT</code></td><td>What the middleware does</td></tr>
+            <tr><td><code>file_name</code></td><td><code>TEXT NOT NULL</code></td><td>Source file name in middlewares/ directory</td></tr>
+            <tr><td><code>type</code></td><td><code>TEXT NOT NULL DEFAULT 'both'</code></td><td><code>'pre'</code>, <code>'post'</code>, or <code>'both'</code></td></tr>
+            <tr><td><code>supports_streaming</code></td><td><code>BOOLEAN DEFAULT false</code></td><td>Whether after() runs on streaming responses</td></tr>
+            <tr><td><code>default_settings</code></td><td><code>JSONB DEFAULT '{}'</code></td><td>Default configuration for this middleware</td></tr>
+            <tr><td><code>version</code></td><td><code>TEXT DEFAULT '1.0.0'</code></td><td>Middleware version</td></tr>
+            <tr><td><code>is_discovered</code></td><td><code>BOOLEAN DEFAULT true</code></td><td>Set to false when file removed from disk</td></tr>
+            <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>First discovery timestamp</td></tr>
+            <tr><td><code>updated_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Last update timestamp</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>model_middlewares</h2>
+        <p>Join table assigning middlewares to specific models or tiers, with per-assignment configuration overrides.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>id</code></td><td><code>UUID PK</code></td><td>Auto-generated primary key</td></tr>
+            <tr><td><code>model_config_id</code></td><td><code>UUID FK NOT NULL</code></td><td>References model_configs(id), CASCADE on delete</td></tr>
+            <tr><td><code>middleware_id</code></td><td><code>UUID FK NOT NULL</code></td><td>References middlewares(id), CASCADE on delete</td></tr>
+            <tr><td><code>is_enabled</code></td><td><code>BOOLEAN DEFAULT true</code></td><td>Per-assignment enable toggle</td></tr>
+            <tr><td><code>sort_order</code></td><td><code>INT DEFAULT 100</code></td><td>Execution priority (lower runs first)</td></tr>
+            <tr><td><code>settings</code></td><td><code>JSONB DEFAULT '{}'</code></td><td>Override settings merged with defaults</td></tr>
+            <tr><td><code>created_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Creation timestamp</td></tr>
+            <tr><td><code>updated_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Last update timestamp</td></tr>
+          </tbody>
+        </table>
+        <p>A <code>UNIQUE(model_config_id, middleware_id)</code> constraint prevents duplicate assignments.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>rate_limit_state</h2>
+        <p>Tracks sliding-window counters for rate limiting.</p>
+
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>key</code></td><td><code>TEXT PK</code></td><td>Rate limit key (e.g., <code>rpm:key:&lt;keyId&gt;</code>)</td></tr>
+            <tr><td><code>window_start</code></td><td><code>TIMESTAMPTZ NOT NULL</code></td><td>Start of the current sliding window</td></tr>
+            <tr><td><code>counter</code></td><td><code>INT DEFAULT 0</code></td><td>Number of requests in current window</td></tr>
+            <tr><td><code>updated_at</code></td><td><code>TIMESTAMPTZ DEFAULT now()</code></td><td>Last update timestamp</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Indexes</h2>
+        <p>Key indexes and their purposes:</p>
+        <table>
+          <thead>
+            <tr><th>Index</th><th>Table</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>idx_call_logs_soul_started</code></td><td>call_logs</td><td>Filter logs by soul_id + time range</td></tr>
+            <tr><td><code>idx_call_logs_model_started</code></td><td>call_logs</td><td>Filter logs by resolved_model + time range</td></tr>
+            <tr><td><code>idx_call_logs_started</code></td><td>call_logs</td><td>Time-range scans for dashboards and exports</td></tr>
+            <tr><td><code>idx_call_logs_error</code></td><td>call_logs</td><td>Partial index: only rows with errors (for error dashboard)</td></tr>
+            <tr><td><code>idx_call_logs_blocked</code></td><td>call_logs</td><td>Partial index: only blocked requests</td></tr>
+            <tr><td><code>idx_call_logs_session</code></td><td>call_logs</td><td>Session history lookup (api_key_id + session_id + time)</td></tr>
+            <tr><td><code>idx_call_logs_key_started</code></td><td>call_logs</td><td>Per-key budget aggregation queries</td></tr>
+            <tr><td><code>idx_call_logs_prompt_hash</code></td><td>call_logs</td><td>Partial index: successful requests with hash (for caching)</td></tr>
+            <tr><td><code>idx_model_configs_type</code></td><td>model_configs</td><td>Fast tier vs model filtering</td></tr>
+            <tr><td><code>idx_model_middlewares_model</code></td><td>model_middlewares</td><td>Load middlewares for a model/tier</td></tr>
+            <tr><td><code>idx_model_middlewares_order</code></td><td>model_middlewares</td><td>Load middlewares in sort_order for a model</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Migration Strategy</h2>
+        <p>The <code>migrate()</code> function in <code>init.mjs</code> uses an additive, idempotent approach:</p>
+        <ul class="list">
+          <li>All DDL uses <code>ADD COLUMN IF NOT EXISTS</code> or <code>CREATE TABLE IF NOT EXISTS</code></li>
+          <li>Column removals use <code>DROP COLUMN IF EXISTS</code></li>
+          <li>Constraint additions are wrapped in <code>DO $$ BEGIN ... EXCEPTION WHEN duplicate_object THEN NULL; END $$</code></li>
+          <li>Data migrations are idempotent (guarded by <code>ON CONFLICT ... DO UPDATE</code>)</li>
+          <li>No separate migration files or version table -- the full migration set runs every startup</li>
+          <li>Old tables (e.g., <code>soul_families</code>, <code>model_tiers</code>, <code>tier_middlewares</code>) are dropped after data is migrated</li>
+        </ul>
+        <p>This means the database reaches a consistent state regardless of which previous version was deployed. Every migration statement is safe to run repeatedly.</p>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>

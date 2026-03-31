@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Model Routing - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Architecture</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Part 6</span>
+        <h1>Model Routing</h1>
+        <p>The resolution algorithm that maps a requested model name to a concrete provider endpoint: direct lookup, tier-based fallback chains, cooldown for transient errors, per-model concurrency queues, and pricing calculation.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Resolution Algorithm</h2>
+        <p>The <code>resolveModel(requestedModel)</code> function in <code>model-router.mjs</code> follows a three-step resolution chain:</p>
+
+        <pre class="diagram"><code>
+  resolveModel("axiologic-deep")
+         |
+    1. Direct model_config lookup by name
+       - Found + type='model' + enabled? --> return buildModelInfo()
+       - Found + type='tier'? --> fall through to step 2
+       - Not found? --> fall through to step 2
+         |
+    2. Tier-based resolution (resolveFromTier)
+       - Look up model_config with type='tier' and matching name
+       - Iterate model_refs[] in priority order
+         - Skip models in cooldown (isModelInCooldown)
+         - Skip disabled models
+         - Skip models missing provider_key/provider_model
+       - First valid model? --> return buildModelInfo(model, tier)
+       - No valid model? --> follow fallback_model chain
+         |
+    3. Fallback chain
+       - tier.fallback_model points to another tier name
+       - resolveFromTier(fallbackName, visited)
+       - Cycle detection via visited Set
+         |
+    Not found? --> throw ModelNotFoundError (404)
+        </code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Tier System</h2>
+        <p>Tiers are stored in the <code>model_configs</code> table with <code>type = 'tier'</code>. They provide ordered model groups with automatic fallback.</p>
+
+        <h3>Tier Fields</h3>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>model_refs</code></td><td>Ordered array of model names. The first enabled, non-cooldown model wins.</td></tr>
+            <tr><td><code>fallback_model</code></td><td>Name of another tier to try if all models in <code>model_refs</code> are exhausted or in cooldown.</td></tr>
+            <tr><td><code>is_enabled</code></td><td>Soft-disable for the entire tier.</td></tr>
+          </tbody>
+        </table>
+
+        <h3>Resolution Order within a Tier</h3>
+        <p>Models in <code>model_refs</code> are tried strictly in array order (index 0 is highest priority). For each model name:</p>
+        <ol>
+          <li>Check if in cooldown (<code>isModelInCooldown(modelName)</code>) -- skip if yes</li>
+          <li>Look up in <code>model_configs</code> by name</li>
+          <li>Verify it is enabled and has <code>provider_key</code> + <code>provider_model</code> set</li>
+          <li>First passing model is returned</li>
+        </ol>
+
+        <h3>Fallback Chains &amp; Cycle Detection</h3>
+        <p>When all models in a tier are exhausted (disabled, in cooldown, or misconfigured), the <code>fallback_model</code> field points to another tier name. The <code>resolveFromTier()</code> function follows this chain recursively. A <code>visited</code> Set prevents infinite loops:</p>
+
+        <pre><code>async function resolveFromTier(tierName, visited = new Set()) {
+  if (visited.has(tierName)) return null; // cycle detected
+  visited.add(tierName);
+  // ... try models, then follow fallback_model
+}</code></pre>
+
+        <p>Example chain: <code>axiologic-deep</code> --> models [A, B, C] --> all in cooldown --> fallback: <code>axiologic-fast</code> --> models [D, E] --> D available --> return D.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>buildModelInfo()</h2>
+        <p>Once a concrete model_config row is found, <code>buildModelInfo()</code> assembles the routing result:</p>
+
+        <pre><code>{
+  resolvedModel: string,       // The name passed back to the client
+  modelConfigName: string,     // model_configs.name (may differ from resolvedModel for tiers)
+  modelConfigId: UUID,         // model_configs.id
+  providerKey: string,         // provider_configs.name
+  providerModel: string,       // Model name sent to the upstream provider
+  providerConfigId: UUID|null, // FK to provider_configs
+  mode: string,                // 'deep', 'fast', etc.
+  inputPrice: number,          // USD per 1M input tokens
+  outputPrice: number,         // USD per 1M output tokens
+  pricingType: 'token'|'request',
+  requestCost: number,         // Flat cost for request-priced models
+  isFree: boolean,             // Free models bypass budget limits
+  maxConcurrency: number,      // Concurrency queue limit (default 3)
+  tierName: string|null,       // Name of the tier if resolved via tier
+  tierId: UUID|null,           // ID of the tier if resolved via tier
+}</code></pre>
+
+        <h3>OpenRouter Pricing Fallback</h3>
+        <p>If a model has zero input and output prices in the database and is token-priced, <code>buildModelInfo()</code> calls <code>lookupOpenRouterPricing(providerModel)</code> to fetch pricing from OpenRouter's API. This provides pricing data for models without explicit DB configuration.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Cooldown System</h2>
+        <p>The cooldown system temporarily removes models from routing after transient errors (e.g., rate limits, payment required). It is implemented in <code>model-cooldown.mjs</code> using an in-memory Map.</p>
+
+        <h3>Cooldown Entry</h3>
+        <pre><code>{
+  expiresAt: number,     // Date.now() + cooldownDurationMs
+  errorType: string,     // 'payment_required', 'rate_limit_error', etc.
+  message: string,       // Original error message
+  cooledAt: string,      // ISO timestamp when cooldown started
+}</code></pre>
+
+        <h3>Triggers</h3>
+        <p><code>shouldTriggerCooldown(errorClassification)</code> returns true if the error type is in <code>config.cooldownTriggers</code>:</p>
+        <pre><code>cooldownTriggers: ['payment_required', 'rate_limit_error']</code></pre>
+
+        <h3>Cascade Types</h3>
+        <p>Two cascade behaviors exist in the pipeline's model-retry loop:</p>
+        <table>
+          <thead>
+            <tr><th>Cascade</th><th>Trigger</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Cooldown cascade</strong></td>
+              <td><code>shouldTriggerCooldown()</code> returns true</td>
+              <td>Model is put in cooldown for <code>config.cooldownDurationMs</code> (default 1 hour). The pipeline re-resolves to get the next model in the tier.</td>
+            </tr>
+            <tr>
+              <td><strong>Immediate cascade</strong></td>
+              <td><code>shouldCascade()</code> returns true (any error with classification)</td>
+              <td>Model is skipped immediately without cooldown. Used for model/provider-level errors where the model might recover soon.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Cooldown Duration &amp; Expiry</h3>
+        <ul class="list">
+          <li>Default: <code>3,600,000 ms</code> (1 hour), configurable via <code>COOLDOWN_DURATION_MS</code> env var</li>
+          <li>Auto-expiry: <code>isModelInCooldown()</code> checks the timestamp and deletes expired entries on read</li>
+          <li>Background cleanup: A <code>setInterval</code> every 5 minutes purges expired entries</li>
+          <li>Manual clear: <code>clearCooldown(modelName)</code> and <code>clearAllCooldowns()</code> for admin override</li>
+        </ul>
+
+        <h3>Dashboard API</h3>
+        <p><code>getCooldownStatus()</code> returns all active cooldowns with remaining time, used by the dashboard's cooldown panel:</p>
+        <pre><code>[
+  {
+    model: "axl/copilot/claude-sonnet-4.5",
+    errorType: "payment_required",
+    message: "Premium request quota exceeded",
+    cooledAt: "2026-03-31T14:00:00Z",
+    expiresAt: "2026-03-31T15:00:00Z",
+    remainingMs: 1800000
+  }
+]</code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Concurrency Queue</h2>
+        <p>The <code>model-queue.mjs</code> module implements a per-model semaphore to limit concurrent requests to each upstream provider/model.</p>
+
+        <h3>Semaphore Design</h3>
+        <pre><code>// Per-model state
+{
+  active: number,        // Currently running requests
+  maxConcurrency: number,// Limit (from model_configs.max_concurrency, default 3)
+  waiters: Array,        // Queue of pending requests
+}</code></pre>
+
+        <h3>acquireModelSlot(resolvedModel, maxConcurrency)</h3>
+        <ol>
+          <li>If <code>active &lt; maxConcurrency</code>: increment active count, return release function immediately</li>
+          <li>Otherwise: add to waiters queue with a 60-second timeout</li>
+          <li>If timeout expires: reject with <code>QueueTimeoutError</code> (503, <code>Retry-After: 10</code>)</li>
+          <li>When a slot becomes available, the next waiter is resolved</li>
+        </ol>
+
+        <h3>Release Behavior</h3>
+        <p>The release function (returned by <code>acquireModelSlot()</code>) uses direct handoff: if there are waiters, the slot is passed directly to the next waiter without decrementing <code>active</code>. This prevents race conditions where a new request could steal the slot between decrement and waiter notification.</p>
+
+        <pre><code>function release(sem) {
+  if (sem.waiters.length > 0) {
+    const next = sem.waiters.shift();
+    next.resolve(); // direct handoff
+  } else {
+    sem.active--;   // no waiters, free the slot
+  }
+}</code></pre>
+
+        <h3>Dynamic Concurrency</h3>
+        <p>The <code>maxConcurrency</code> is updated every time <code>getSemaphore()</code> is called, so changes to <code>model_configs.max_concurrency</code> via the admin API take effect on the next request without restart.</p>
+
+        <h3>Queue Statistics</h3>
+        <p><code>getQueueStats()</code> returns the state of all semaphores for the <code>/metrics</code> endpoint:</p>
+        <pre><code>{
+  "axl/copilot/gpt-4o": { active: 2, max: 3, waiting: 0 },
+  "axl/kiro/claude-sonnet-4.5": { active: 3, max: 3, waiting: 1 }
+}</code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Pricing</h2>
+        <p>Cost calculation is handled by <code>calculateCost()</code> in <code>cost-calculator.mjs</code>. Two pricing models are supported:</p>
+
+        <h3>Token-based Pricing</h3>
+        <p>Most direct API providers (OpenAI, Anthropic, Google) charge per token:</p>
+        <pre><code>input_cost  = (prompt_tokens / 1,000,000) * input_price
+output_cost = (completion_tokens / 1,000,000) * output_price
+total_cost  = input_cost + output_cost</code></pre>
+        <p>Prices are stored in the <code>model_configs</code> table as USD per 1M tokens. If the database has no pricing and the model is token-priced, OpenRouter's API is queried as a fallback.</p>
+
+        <h3>Per-request Pricing</h3>
+        <p>Subscription-based providers (Copilot, Kiro) charge a flat rate per request regardless of token count:</p>
+        <pre><code>input_cost  = 0
+output_cost = 0
+total_cost  = request_cost</code></pre>
+
+        <p>Request costs are set by the migration in <code>init.mjs</code> based on model tier:</p>
+        <table>
+          <thead>
+            <tr><th>Provider</th><th>Tier</th><th>Cost per Request</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Copilot</td><td>Free (GPT-4o, GPT-4.1, GPT-5 mini)</td><td>$0.00</td></tr>
+            <tr><td>Copilot</td><td>Cheap premium (Haiku, Flash, Grok)</td><td>$0.01 - $0.013</td></tr>
+            <tr><td>Copilot</td><td>Standard premium (Sonnet, GPT-5.x)</td><td>$0.04</td></tr>
+            <tr><td>Copilot</td><td>Expensive (Opus 4.x)</td><td>$0.12</td></tr>
+            <tr><td>Kiro</td><td>Light (Qwen, Minimax)</td><td>$0.002 - $0.01</td></tr>
+            <tr><td>Kiro</td><td>Haiku</td><td>$0.016</td></tr>
+            <tr><td>Kiro</td><td>Sonnet</td><td>$0.052</td></tr>
+            <tr><td>Kiro</td><td>Opus</td><td>$0.088</td></tr>
+          </tbody>
+        </table>
+
+        <p>All costs are rounded to 6 decimal places to avoid floating-point drift.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Configuration</h2>
+        <p>Model routing behavior is controlled by these <code>config.mjs</code> settings:</p>
+
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Default</th><th>Env Var</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>maxModelRetries</code></td><td>5</td><td><code>MAX_MODEL_RETRIES</code></td><td>Maximum model-level cascade attempts (cooldown fallback loop)</td></tr>
+            <tr><td><code>cooldownDurationMs</code></td><td>3,600,000 (1h)</td><td><code>COOLDOWN_DURATION_MS</code></td><td>How long a model stays in cooldown</td></tr>
+            <tr><td><code>cooldownTriggers</code></td><td><code>['payment_required', 'rate_limit_error']</code></td><td>--</td><td>Error types that trigger cooldown (vs immediate cascade)</td></tr>
+            <tr><td><code>maxRetries</code></td><td>3</td><td>--</td><td>HTTP-level retries per model</td></tr>
+            <tr><td><code>initialDelayMs</code></td><td>1,000</td><td>--</td><td>Base delay for exponential backoff</td></tr>
+            <tr><td><code>backoffMultiplier</code></td><td>2</td><td>--</td><td>Delay multiplier per retry</td></tr>
+            <tr><td><code>maxDelayMs</code></td><td>30,000</td><td>--</td><td>Maximum delay between retries</td></tr>
+            <tr><td><code>jitterPercent</code></td><td>20</td><td>--</td><td>Random jitter +/- percentage on retry delay</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>

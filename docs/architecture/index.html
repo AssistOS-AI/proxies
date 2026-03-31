@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Architecture - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Architecture</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Architecture</span>
+        <h1>System Architecture</h1>
+        <p>Deep-dive into every layer of Soul Gateway: how requests flow from ingress to response, how models are routed and retried, how the database is partitioned, and how the middleware plugin system ties it all together.</p>
+      </section>
+
+      <section class="section">
+        <div class="grid">
+
+          <a class="card" href="01-request-pipeline.html">
+            <span class="tag">Part 1</span>
+            <h3>Request Pipeline</h3>
+            <p>The full lifecycle of a <code>/v1/chat/completions</code> request: authentication, body parsing, model routing, middleware execution, dispatch with retry, streaming, cost calculation, logging, and real-time broadcast.</p>
+          </a>
+
+          <a class="card" href="02-database-schema.html">
+            <span class="tag">Part 2</span>
+            <h3>Database Schema</h3>
+            <p>PostgreSQL tables powering the gateway: API keys, model configs, provider configs, call logs with monthly partitioning, middleware registry, rate-limit state, and the incremental migration strategy.</p>
+          </a>
+
+          <a class="card" href="03-provider-system.html">
+            <span class="tag">Part 3</span>
+            <h3>Provider System</h3>
+            <p>How Soul Gateway authenticates with upstream LLM providers: API key, managed OAuth, and internal auth types. OAuth adapters, multi-account credential pooling, token refresh, format converters, and auto-provisioning.</p>
+          </a>
+
+          <a class="card" href="04-middleware-framework.html">
+            <span class="tag">Part 4</span>
+            <h3>Middleware Framework</h3>
+            <p>The pluggable middleware system: file-based discovery, the before/after hook interface, context object anatomy, execution ordering, abort mechanics, settings merging, and the 12 built-in middlewares.</p>
+          </a>
+
+          <a class="card" href="05-streaming.html">
+            <span class="tag">Part 5</span>
+            <h3>Streaming &amp; WebSockets</h3>
+            <p>SSE response streaming from upstream providers to clients, the raw RFC 6455 WebSocket implementation, real-time log broadcasting over WebSocket and SSE, ping/pong heartbeats, and frame encoding.</p>
+          </a>
+
+          <a class="card" href="06-model-routing.html">
+            <span class="tag">Part 6</span>
+            <h3>Model Routing</h3>
+            <p>Model resolution algorithm: direct lookup, tier-based fallback chains with cycle detection, cooldown system for transient errors, per-model concurrency queues, and token/request-based pricing.</p>
+          </a>
+
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

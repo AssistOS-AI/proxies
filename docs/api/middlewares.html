@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Middleware Management - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway API Reference</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Middlewares</span>
+        <h1>Middleware Management</h1>
+        <p>
+          Manage the middleware pipeline. Middlewares are discovered by scanning the filesystem
+          and registered in the database. They can be assigned to individual models or to tiers,
+          with custom settings and execution order.
+        </p>
+      </section>
+
+      <!-- GET /api/v1/middlewares -->
+      <section class="section">
+        <h2>List Middlewares</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/middlewares</span>
+          </div>
+          <div class="endpoint-body">
+            <p>List all registered middlewares.</p>
+
+            <h4>Response</h4>
+<pre><code>[
+  {
+    "id": 1,
+    "name": "rate-limiter",
+    "display_name": "Rate Limiter",
+    "description": "Per-key RPM and TPM rate limiting",
+    "phase": "pre",
+    "default_settings": { "window_seconds": 60 },
+    "is_enabled": true,
+    "created_at": "2026-03-01T10:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "name": "budget-enforcer",
+    "display_name": "Budget Enforcer",
+    "description": "Daily and monthly budget enforcement per API key",
+    "phase": "both",
+    "default_settings": {},
+    "is_enabled": true,
+    "created_at": "2026-03-01T10:00:00.000Z"
+  }
+]</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/middlewares/:id -->
+      <section class="section">
+        <h2>Get Middleware</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/middlewares/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Get detailed information about a specific middleware.</p>
+
+            <h4>Path Parameters</h4>
+            <table>
+              <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>id</code></td><td>Middleware ID (integer).</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response</h4>
+            <p>Returns the full middleware object, or <code>404</code> if not found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PUT /api/v1/middlewares/:id -->
+      <section class="section">
+        <h2>Update Middleware Defaults</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-put">PUT</span>
+            <span>/api/v1/middlewares/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Update a middleware's default settings or enabled state.</p>
+
+            <h4>Request Body</h4>
+            <p>Any subset of: <code>default_settings</code>, <code>is_enabled</code>, <code>display_name</code>, <code>description</code>.</p>
+
+            <h4>Response</h4>
+            <p>Returns the updated middleware object, or <code>404</code> if not found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- POST /api/v1/middlewares/rescan -->
+      <section class="section">
+        <h2>Rescan Middlewares</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/middlewares/rescan</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Scan the filesystem for middleware <code>.mjs</code> files and register any
+              newly discovered middlewares in the database. Existing middlewares are not
+              overwritten.
+            </p>
+
+            <h4>Response</h4>
+<pre><code>{
+  "discovered": ["rate-limiter", "budget-enforcer", "cache", "blacklist"],
+  "count": 4
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- Model-Middleware Endpoints -->
+      <section class="section">
+        <h2>Model-Middleware Assignment</h2>
+        <p>Assign middlewares to individual models with custom settings and execution order.</p>
+
+        <!-- GET /api/v1/models/:id/middlewares -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/models/:id/middlewares</span>
+          </div>
+          <div class="endpoint-body">
+            <p>List all middlewares assigned to a specific model, ordered by <code>sort_order</code>.</p>
+
+            <h4>Response</h4>
+<pre><code>[
+  {
+    "id": 10,
+    "middleware_id": 1,
+    "model_config_id": 5,
+    "is_enabled": true,
+    "sort_order": 10,
+    "settings": { "window_seconds": 30 },
+    "middleware_name": "rate-limiter"
+  }
+]</code></pre>
+          </div>
+        </div>
+
+        <!-- POST /api/v1/models/:id/middlewares -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/models/:id/middlewares</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Assign a middleware to a model.</p>
+
+            <h4>Request Body</h4>
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>middleware_id</code></td><td>integer</td><td>Yes</td><td>&mdash;</td><td>ID of the middleware to assign.</td></tr>
+                <tr><td><code>is_enabled</code></td><td>boolean</td><td>No</td><td><code>true</code></td><td>Whether the assignment is active.</td></tr>
+                <tr><td><code>sort_order</code></td><td>integer</td><td>No</td><td><code>100</code></td><td>Execution order (lower runs first).</td></tr>
+                <tr><td><code>settings</code></td><td>object</td><td>No</td><td><code>{}</code></td><td>Custom settings that override the middleware's defaults.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response (201 Created)</h4>
+            <p>Returns the created assignment. Returns <code>409</code> if the middleware is already assigned to this model.</p>
+          </div>
+        </div>
+
+        <!-- PUT /api/v1/models/:id/middlewares/:mwId -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-put">PUT</span>
+            <span>/api/v1/models/:id/middlewares/:mwId</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Update a model-middleware assignment's settings, enabled state, or sort order.</p>
+
+            <h4>Path Parameters</h4>
+            <table>
+              <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>id</code></td><td>Model configuration ID.</td></tr>
+                <tr><td><code>mwId</code></td><td>Model-middleware assignment ID.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response</h4>
+            <p>Returns the updated assignment, or <code>404</code> if not found.</p>
+          </div>
+        </div>
+
+        <!-- DELETE /api/v1/models/:id/middlewares/:mwId -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-delete">DELETE</span>
+            <span>/api/v1/models/:id/middlewares/:mwId</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Remove a middleware assignment from a model.</p>
+            <h4>Response</h4>
+<pre><code>{ "ok": true }</code></pre>
+          </div>
+        </div>
+
+        <!-- PUT /api/v1/models/:id/middlewares/reorder -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-put">PUT</span>
+            <span>/api/v1/models/:id/middlewares/reorder</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Reorder the middleware pipeline for a model by providing the assignment IDs in the desired execution order.</p>
+
+            <h4>Request Body</h4>
+<pre><code>{ "ordered_ids": [10, 12, 11] }</code></pre>
+
+            <h4>Response</h4>
+            <p>Returns the updated list of model-middleware assignments in the new order.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tier-Middleware Endpoints -->
+      <section class="section">
+        <h2>Tier-Middleware Assignment</h2>
+        <p>Assign middlewares to tiers. Tier-level middlewares apply to all models within the tier.</p>
+
+        <!-- GET /api/v1/tiers/:id/middlewares -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/tiers/:id/middlewares</span>
+          </div>
+          <div class="endpoint-body">
+            <p>List all middlewares assigned to a specific tier.</p>
+          </div>
+        </div>
+
+        <!-- POST /api/v1/tiers/:id/middlewares -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/tiers/:id/middlewares</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Assign a middleware to a tier. Same request body as model-middleware assignment.</p>
+
+            <h4>Request Body</h4>
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Default</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>middleware_id</code></td><td>integer</td><td>Yes</td><td>&mdash;</td><td>ID of the middleware to assign.</td></tr>
+                <tr><td><code>is_enabled</code></td><td>boolean</td><td>No</td><td><code>true</code></td><td>Whether the assignment is active.</td></tr>
+                <tr><td><code>sort_order</code></td><td>integer</td><td>No</td><td><code>100</code></td><td>Execution order (lower runs first).</td></tr>
+                <tr><td><code>settings</code></td><td>object</td><td>No</td><td><code>{}</code></td><td>Custom settings overriding defaults.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response (201 Created)</h4>
+            <p>Returns the assignment. <code>409</code> if already assigned.</p>
+          </div>
+        </div>
+
+        <!-- PUT /api/v1/tiers/:id/middlewares/:mwId -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-put">PUT</span>
+            <span>/api/v1/tiers/:id/middlewares/:mwId</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Update a tier-middleware assignment.</p>
+            <h4>Response</h4>
+            <p>Returns the updated assignment, or <code>404</code> if not found.</p>
+          </div>
+        </div>
+
+        <!-- DELETE /api/v1/tiers/:id/middlewares/:mwId -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-delete">DELETE</span>
+            <span>/api/v1/tiers/:id/middlewares/:mwId</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Remove a middleware assignment from a tier.</p>
+            <h4>Response</h4>
+<pre><code>{ "ok": true }</code></pre>
+          </div>
+        </div>
+
+        <!-- PUT /api/v1/tiers/:id/middlewares/reorder -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-put">PUT</span>
+            <span>/api/v1/tiers/:id/middlewares/reorder</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Reorder the middleware pipeline for a tier.</p>
+
+            <h4>Request Body</h4>
+<pre><code>{ "ordered_ids": [5, 7, 6] }</code></pre>
+
+            <h4>Response</h4>
+            <p>Returns the reordered list of tier-middleware assignments.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

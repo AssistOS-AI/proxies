@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Middlewares - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Middlewares</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Middlewares</span>
+        <h1>Built-in Middleware Plugins</h1>
+        <p>Soul Gateway ships with 12 middleware plugins that run in the request pipeline before and after LLM dispatch. Each is a self-contained <code>.mjs</code> file in <code>src/middlewares/</code>, auto-discovered at startup.</p>
+      </section>
+
+      <section class="section">
+        <h2>Pre-Dispatch Middlewares</h2>
+        <p>These run <strong>before</strong> the request is sent to the upstream LLM provider. They can inspect, modify, or abort the request.</p>
+        <div class="grid">
+
+          <article class="card">
+            <span class="tag type-pre">pre</span>
+            <h3>blacklist-scanner</h3>
+            <p>Scans request message content against blacklist rules stored in the database. Blocks matching requests with a 400 status and logs the matched rule ID.</p>
+          </article>
+
+          <article class="card">
+            <span class="tag type-pre">pre</span>
+            <h3>rate-limiter</h3>
+            <p>Enforces per-key requests-per-minute (RPM) rate limiting. Uses the key's configured <code>rpm_limit</code> or the setting override. Aborts with 429 when the limit is exceeded.</p>
+            <p><strong>Default:</strong> <code>overrideRpmLimit: null</code> (uses key's own limit)</p>
+          </article>
+
+          <article class="card">
+            <span class="tag type-pre">pre</span>
+            <h3>system-prompt-injector</h3>
+            <p>Injects a configurable system message into the conversation. Can prepend or append to the message array. Useful for per-tier instructions or guardrails.</p>
+            <p><strong>Default:</strong> <code>content: ""</code>, <code>position: "prepend"</code></p>
+          </article>
+
+          <article class="card">
+            <span class="tag type-pre">pre</span>
+            <h3>context-compressor</h3>
+            <p>Compresses long conversations by summarizing older messages when estimated token count exceeds a threshold. Keeps recent messages intact and replaces older ones with a structured summary.</p>
+            <p><strong>Default:</strong> <code>maxTokens: 100000</code>, <code>preserveRecent: 5</code></p>
+          </article>
+
+          <article class="card">
+            <span class="tag type-pre">pre</span>
+            <h3>output-compressor</h3>
+            <p>Truncates verbose tool/CLI output blocks and large code blocks within messages. Keeps the first 70% and last 20% of oversized content, inserting a truncation marker.</p>
+            <p><strong>Default:</strong> <code>maxOutputLength: 5000</code></p>
+          </article>
+
+          <a class="card" href="cache.html">
+            <span class="tag type-pre">pre</span>
+            <h3>cache</h3>
+            <p>Returns cached responses for identical prompts (same messages + model). Should be assigned with the highest <code>sort_order</code> so it runs after all other pre-middlewares, hashing the final mutated messages. Non-streaming only.</p>
+            <p><strong>Default:</strong> <code>enabled: true</code></p>
+          </a>
+
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Post-Dispatch Middlewares</h2>
+        <p>These run <strong>after</strong> the LLM response is received. They can inspect or modify the response content.</p>
+        <div class="grid">
+
+          <article class="card">
+            <span class="tag type-post">post</span>
+            <h3>response-filter</h3>
+            <p>Applies regex-based find/replace on response content for redaction or content filtering. Patterns are configured as an array of regex strings in settings.</p>
+            <p><strong>Default:</strong> <code>patterns: []</code>, <code>replacement: "[REDACTED]"</code></p>
+          </article>
+
+          <article class="card">
+            <span class="tag type-post">post</span>
+            <h3>tpm-tracker</h3>
+            <p>Tracks tokens-per-minute usage per API key by recording total tokens from the response. Non-blocking observation &mdash; errors are silently caught. Supports streaming responses.</p>
+            <p><strong>Default:</strong> <code>enabled: true</code></p>
+          </article>
+
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Both (Pre + Post) Middlewares</h2>
+        <p>These run <strong>both</strong> before and after dispatch. The <code>before()</code> hook can set up state that the <code>after()</code> hook uses.</p>
+        <div class="grid">
+
+          <a class="card" href="budget-enforcer.html">
+            <span class="tag type-both">both</span>
+            <h3>budget-enforcer</h3>
+            <p>Pre-check: queries daily spend from <code>call_logs</code> and blocks requests when the budget is exceeded (429). Post-hook: updates the in-memory spend cache so subsequent requests see the latest totals. Free models are excluded.</p>
+            <p><strong>Default:</strong> <code>overrideDailyBudget: null</code></p>
+          </a>
+
+          <a class="card" href="loop-detector.html">
+            <span class="tag type-both">both</span>
+            <h3>loop-detector</h3>
+            <p>Detects agent loops by fingerprinting responses (tool names + content prefix, SHA-256 hashed) and tracking repetition within a sliding window. Three modes: <em>intervene</em> (inject warning), <em>block</em> (429), or <em>log</em> (observe only). Supports streaming.</p>
+            <p><strong>Default:</strong> <code>mode: "intervene"</code>, <code>similarityThreshold: 5</code>, <code>similarityWindow: 7</code></p>
+          </a>
+
+          <article class="card">
+            <span class="tag type-both">both</span>
+            <h3>request-logger</h3>
+            <p>Logs request and response metadata for debugging and observability. Records message count, estimated input tokens, model, tier, agent, streaming mode, response size, token usage, and middleware latency. Supports streaming.</p>
+            <p><strong>Default:</strong> <code>logLevel: "debug"</code></p>
+          </article>
+
+          <article class="card">
+            <span class="tag type-both">both</span>
+            <h3>session-context</h3>
+            <p>Maintains a rolling session context by extracting key facts (decisions, actions, entities) from responses and injecting them as a system message in subsequent requests. In-memory session store with configurable TTL.</p>
+            <p><strong>Default:</strong> <code>maxSummaryTokens: 500</code>, <code>sessionTTL: 3600</code></p>
+          </article>
+
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Writing Your Own</h2>
+        <p>See the <a href="writing-middleware.html">Writing Middleware</a> guide for a step-by-step tutorial on creating custom middleware plugins.</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

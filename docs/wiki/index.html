@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wiki - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Wiki</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Wiki</span>
+        <h1>Glossary</h1>
+        <p>Key concepts and terminology used throughout the Soul Gateway system.</p>
+      </section>
+
+      <section class="section">
+        <div class="grid">
+
+          <a class="card" href="soul-id.html">
+            <h3>Soul ID</h3>
+            <p>A voluntary header (<code>X-Soul-Id</code>) that identifies the human or system behind a request, used for per-soul log filtering and WebSocket subscriptions.</p>
+          </a>
+
+          <a class="card" href="api-key.html">
+            <h3>API Key</h3>
+            <p>A Bearer token that authenticates client requests, stored as a SHA-256 hash with per-key rate limits, budgets, and expiry controls.</p>
+          </a>
+
+          <a class="card" href="tier.html">
+            <h3>Tier</h3>
+            <p>A named group of models with priority ordering that provides automatic fallback when individual models are unavailable or in cooldown.</p>
+          </a>
+
+          <a class="card" href="cooldown.html">
+            <h3>Cooldown</h3>
+            <p>A temporary blackout period applied to a model after provider errors such as rate limiting or payment failures, causing the tier resolver to skip it.</p>
+          </a>
+
+          <a class="card" href="provider.html">
+            <h3>Provider</h3>
+            <p>A configured LLM backend connection supporting three auth types: API key, managed OAuth with credential rotation, and internal logic.</p>
+          </a>
+
+          <a class="card" href="middleware.html">
+            <h3>Middleware</h3>
+            <p>A processing plugin that runs before and/or after LLM dispatch, auto-discovered from <code>.mjs</code> files and assignable to tiers or individual models.</p>
+          </a>
+
+          <a class="card" href="format-converter.html">
+            <h3>Format Converter</h3>
+            <p>An adapter that translates between the OpenAI Chat Completions wire format and a provider-specific API protocol.</p>
+          </a>
+
+          <a class="card" href="rate-limiting.html">
+            <h3>Rate Limiting</h3>
+            <p>Dual-mechanism traffic control using per-key RPM (requests per minute) and TPM (tokens per minute) with a sliding-window counter in PostgreSQL.</p>
+          </a>
+
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

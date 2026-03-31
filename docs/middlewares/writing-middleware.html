@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Writing Middleware - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Middlewares</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Tutorial</span>
+        <h1>Writing Custom Middleware</h1>
+        <p>Create a new middleware plugin by adding a single <code>.mjs</code> file to <code>src/middlewares/</code>. The loader discovers it automatically, validates its interface, and registers it in the database.</p>
+      </section>
+
+      <section class="section">
+        <h2>Step 1: Create the File</h2>
+        <p>Create a new <code>.mjs</code> file in <code>app/src/middlewares/</code>. The filename becomes the <code>file_name</code> column in the database and is used for loading.</p>
+        <pre><code>// app/src/middlewares/my-plugin.mjs
+
+export default {
+  // Required: unique middleware name
+  name: 'my-plugin',
+
+  // Optional: human-readable description
+  description: 'Demonstrates the middleware interface',
+
+  // Optional: semver version string (default: '1.0.0')
+  version: '1.0.0',
+
+  // Required: 'pre', 'post', or 'both'
+  type: 'both',
+
+  // Optional: if true, after() runs even for streaming responses
+  supportsStreaming: false,
+
+  // Optional: default settings (merged with per-tier/model overrides)
+  defaultSettings: {
+    enabled: true,
+    myOption: 'value',
+  },
+
+  // Required for type 'pre' or 'both'
+  async before(ctx, settings) {
+    if (!settings.enabled) return;
+    // Inspect or modify ctx.messages, ctx.params
+    // Set ctx.abort = true to stop the pipeline
+  },
+
+  // Required for type 'post' or 'both'
+  async after(ctx, settings) {
+    if (!settings.enabled) return;
+    // Inspect ctx.response, ctx.usage
+    // Modify ctx.response to alter the output
+  },
+};</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Step 2: Export the Required Interface</h2>
+        <p>The middleware loader (<code>middleware-loader.mjs</code>) validates every imported module against these rules:</p>
+
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Required</th><th>Validation</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>name</code></td>
+              <td><code>string</code></td>
+              <td>Yes</td>
+              <td>Must be a non-empty string. Used as the unique identifier in the database.</td>
+            </tr>
+            <tr>
+              <td><code>type</code></td>
+              <td><code>string</code></td>
+              <td>No</td>
+              <td>Must be <code>'pre'</code>, <code>'post'</code>, or <code>'both'</code>. Defaults to <code>'both'</code> if omitted.</td>
+            </tr>
+            <tr>
+              <td><code>before</code></td>
+              <td><code>async function</code></td>
+              <td>If type is <code>pre</code> or <code>both</code></td>
+              <td>Must be a function. Skipped modules log a warning.</td>
+            </tr>
+            <tr>
+              <td><code>after</code></td>
+              <td><code>async function</code></td>
+              <td>If type is <code>post</code> or <code>both</code></td>
+              <td>Must be a function. Skipped modules log a warning.</td>
+            </tr>
+            <tr>
+              <td><code>description</code></td>
+              <td><code>string</code></td>
+              <td>No</td>
+              <td>Stored in DB for dashboard display.</td>
+            </tr>
+            <tr>
+              <td><code>version</code></td>
+              <td><code>string</code></td>
+              <td>No</td>
+              <td>Defaults to <code>'1.0.0'</code>.</td>
+            </tr>
+            <tr>
+              <td><code>supportsStreaming</code></td>
+              <td><code>boolean</code></td>
+              <td>No</td>
+              <td>Defaults to <code>false</code>. When <code>false</code>, the <code>after()</code> hook is skipped for streaming responses.</td>
+            </tr>
+            <tr>
+              <td><code>defaultSettings</code></td>
+              <td><code>object</code></td>
+              <td>No</td>
+              <td>Defaults to <code>{}</code>. Stored as JSON in the DB; merged with per-tier/model overrides at runtime.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout warning">
+          <strong>Validation failures are non-fatal.</strong> If a file fails validation (missing name, wrong type, missing required hook), it is skipped with a warning log. Other middlewares continue loading.
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Step 3: The Context Object</h2>
+        <p>Both <code>before(ctx, settings)</code> and <code>after(ctx, settings)</code> receive a context object built by <code>middleware-runner.mjs</code>. Here are all fields:</p>
+
+        <h3>Mutable (pre-middlewares can modify)</h3>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ctx.messages</code></td>
+              <td><code>Array</code></td>
+              <td>The conversation messages array. Pre-middlewares can add, remove, or modify messages.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.params</code></td>
+              <td><code>Object</code></td>
+              <td>Additional request parameters (temperature, max_tokens, etc.).</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Read-Only Request Info</h3>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ctx.model</code></td>
+              <td><code>string</code></td>
+              <td>The resolved model name.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.tier</code></td>
+              <td><code>string</code></td>
+              <td>The tier name (if the request was routed via tier).</td>
+            </tr>
+            <tr>
+              <td><code>ctx.apiKeyId</code></td>
+              <td><code>number</code></td>
+              <td>The authenticated API key's database ID.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.agentName</code></td>
+              <td><code>string</code></td>
+              <td>Agent name from the <code>X-Soul-Agent</code> header.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.sessionId</code></td>
+              <td><code>string</code></td>
+              <td>Session ID, derived from the key + agent + timeout window.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.isStreaming</code></td>
+              <td><code>boolean</code></td>
+              <td>Whether the client requested streaming (<code>stream: true</code>).</td>
+            </tr>
+            <tr>
+              <td><code>ctx.authCtx</code></td>
+              <td><code>Object</code></td>
+              <td>Authentication context: <code>{ api_key_id, rpm_limit, tpm_limit, key_daily_budget, soul_id }</code>.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>State &amp; Response</h3>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ctx.metadata</code></td>
+              <td><code>Object</code></td>
+              <td>Shared state between <code>before()</code> and <code>after()</code>. Use this to pass data between hooks.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.response</code></td>
+              <td><code>string|null</code></td>
+              <td>The LLM response content. <code>null</code> in pre-hooks; populated in post-hooks.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.isChunk</code></td>
+              <td><code>boolean</code></td>
+              <td>Whether this is a streaming chunk (for streaming-capable middlewares).</td>
+            </tr>
+            <tr>
+              <td><code>ctx.usage</code></td>
+              <td><code>Object|null</code></td>
+              <td>Token usage: <code>{ prompt_tokens, completion_tokens, total_tokens }</code>. Only set in post-hooks.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Abort Control</h3>
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>ctx.abort</code></td>
+              <td><code>boolean</code></td>
+              <td>Set to <code>true</code> to stop the pipeline. No further middlewares run.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.abortStatus</code></td>
+              <td><code>number</code></td>
+              <td>HTTP status code for the abort response. Default: <code>400</code>.</td>
+            </tr>
+            <tr>
+              <td><code>ctx.abortMessage</code></td>
+              <td><code>string</code></td>
+              <td>Error message returned to the client (for error aborts).</td>
+            </tr>
+            <tr>
+              <td><code>ctx.abortResponse</code></td>
+              <td><code>Object|null</code></td>
+              <td>When set with <code>abortStatus: 200</code>, the pipeline sends this as a success response (used by the cache middleware to return cached results).</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section">
+        <h2>Step 4: Aborting Requests</h2>
+        <p>There are two ways to abort the pipeline from a <code>before()</code> hook:</p>
+
+        <h3>Error Abort</h3>
+        <p>Block a request with an error status (e.g., 400, 429):</p>
+        <pre><code>async before(ctx, settings) {
+  if (someBadCondition) {
+    ctx.abort = true;
+    ctx.abortStatus = 429;
+    ctx.abortMessage = 'Rate limit exceeded';
+    ctx.metadata.errorType = 'rate_limit_exceeded';
+    return;
+  }
+}</code></pre>
+
+        <h3>Success Abort (Cache Hit)</h3>
+        <p>Return a pre-computed response without calling the LLM:</p>
+        <pre><code>async before(ctx, settings) {
+  const cached = lookupCache(ctx);
+  if (cached) {
+    ctx.abort = true;
+    ctx.abortStatus = 200;
+    ctx.abortResponse = {
+      content: cached.content,
+      stopReason: 'stop',
+      usage: cached.usage,
+      headers: { 'X-Cache': 'HIT' },
+    };
+    return;
+  }
+}</code></pre>
+
+        <div class="callout">
+          <strong>Error handling:</strong> If a middleware's <code>before()</code> or <code>after()</code> throws an uncaught exception, the runner logs the error and continues to the next middleware. Middleware errors are non-critical by design &mdash; they never crash the request pipeline.
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Step 5: Settings Merging</h2>
+        <p>The <code>settings</code> object passed to your hooks is the result of merging two layers:</p>
+        <ol>
+          <li><strong>Default settings:</strong> The <code>defaultSettings</code> object from your middleware export, stored in the <code>middlewares</code> database table.</li>
+          <li><strong>Override settings:</strong> Per-tier or per-model overrides, stored in the <code>middleware_assignments</code> join table when a middleware is assigned via the API.</li>
+        </ol>
+        <p>The merge is a shallow spread: <code>{ ...defaults, ...overrides }</code>. Override keys replace default keys at the top level.</p>
+        <pre><code>// Your middleware declares:
+defaultSettings: { enabled: true, threshold: 100, mode: 'warn' }
+
+// Admin assigns to a tier with override:
+{ "threshold": 50 }
+
+// Your hook receives:
+settings = { enabled: true, threshold: 50, mode: 'warn' }</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Step 6: Reload Without Restart</h2>
+        <p>After adding or modifying a middleware file, you can reload the middleware registry without restarting the entire gateway:</p>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="tag">POST</span>
+            <code>/api/v1/middlewares/rescan</code>
+          </div>
+          <div class="endpoint-body">
+            <p>Re-scans the <code>src/middlewares/</code> directory, imports all <code>.mjs</code> files (with cache-busting via a timestamp query parameter), validates and upserts them into the database. Also marks any previously-discovered middlewares whose files have been removed as undiscovered.</p>
+            <pre><code>curl -X POST http://localhost:8042/api/v1/middlewares/rescan</code></pre>
+          </div>
+        </div>
+
+        <p>Alternatively, restart the gateway:</p>
+        <pre><code>ploinky restart soul-gateway</code></pre>
+      </section>
+
+      <section class="section">
+        <h2>Step 7: Assign to Tiers or Models</h2>
+        <p>A middleware is only active if it is assigned to at least one tier or model config. Use the management API to create assignments with optional setting overrides and a <code>sort_order</code> to control execution sequence.</p>
+        <p>Tier middlewares run first (broad policies), then model middlewares (specific overrides). Within each level, middlewares execute in ascending <code>sort_order</code>.</p>
+
+        <div class="callout">
+          <strong>Execution order:</strong> Pre-middlewares run in order: tier middlewares (ascending sort_order), then model middlewares (ascending sort_order). Post-middlewares run in the same order. The cache middleware should always have the highest sort_order among pre-middlewares so it hashes the final message state.
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Streaming Considerations</h2>
+        <p>By default, <code>after()</code> hooks are <strong>skipped for streaming responses</strong> because chunks have already been sent to the client and modifications cannot reach them.</p>
+        <p>Set <code>supportsStreaming: true</code> if your <code>after()</code> hook performs observation-only work (logging, tracking, recording) that is still useful for streaming. The <code>ctx.isStreaming</code> flag lets you branch behavior:</p>
+        <pre><code>async after(ctx, settings) {
+  if (ctx.isStreaming) {
+    // Observation only — ctx.response modifications won't reach the client
+    recordMetrics(ctx);
+    return;
+  }
+  // Non-streaming: can modify ctx.response
+  ctx.response = sanitize(ctx.response);
+}</code></pre>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Streaming &amp; WebSockets - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Architecture</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Part 5</span>
+        <h1>Streaming &amp; WebSockets</h1>
+        <p>SSE response streaming from providers to clients, the raw RFC 6455 WebSocket implementation, real-time log broadcasting, and the heartbeat system that keeps connections alive through Cloudflare tunnels.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Architecture Overview</h2>
+        <pre class="diagram"><code>
+  Upstream Provider
+    |  (async generator: text_delta, tool_calls_delta, done, error chunks)
+    v
+  stream-tap.mjs
+    |  Re-encodes as OpenAI SSE format
+    |  Captures: content, usage, stopReason, ttfbMs
+    v
+  Client (SSE)
+    |
+    |  Meanwhile, after request completes:
+    v
+  broadcastLog()          broadcastToSoul()
+    |                       |
+    v                       v
+  /ws/v1/logs            /ws/v1/soul/:id
+  (all subscribers)      (soul-specific)
+    |                       |
+    v                       v
+  WebSocket clients      WebSocket clients
+  SSE clients
+        </code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>SSE Response Streaming (stream-tap)</h2>
+        <p>When a client sets <code>stream: true</code>, the <code>tapStream()</code> function in <code>stream-tap.mjs</code> consumes the async generator from achillesAgentLib and re-encodes each chunk as an OpenAI-compatible Server-Sent Event.</p>
+
+        <h3>Response Headers</h3>
+        <pre><code>Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+Access-Control-Allow-Origin: *</code></pre>
+
+        <h3>Chunk Types</h3>
+        <table>
+          <thead>
+            <tr><th>Generator Chunk Type</th><th>SSE Output</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>text_delta</code></td>
+              <td><code>data: {"choices":[{"delta":{"content":"..."}}]}</code></td>
+              <td>Incremental text content. First chunk triggers TTFB measurement. Content is accumulated internally.</td>
+            </tr>
+            <tr>
+              <td><code>tool_calls_delta</code></td>
+              <td><code>data: {"choices":[{"delta":{"tool_calls":[...]}}]}</code></td>
+              <td>Tool call deltas passed through to client.</td>
+            </tr>
+            <tr>
+              <td><code>done</code></td>
+              <td><code>data: {"choices":[{"finish_reason":"stop"}]}</code> then <code>data: [DONE]</code></td>
+              <td>Final chunk with usage stats. The finish chunk may include <code>usage</code> data. Followed by the <code>[DONE]</code> sentinel.</td>
+            </tr>
+            <tr>
+              <td><code>error</code></td>
+              <td><code>data: {"error":{"type":"mid_stream_error",...}}</code> then <code>data: [DONE]</code></td>
+              <td>Mid-stream error from provider. Best-effort delivery (client may have disconnected). The function returns with <code>error</code> set.</td>
+            </tr>
+            <tr>
+              <td><code>thinking_delta</code></td>
+              <td>(ignored)</td>
+              <td>Internal reasoning tokens from some providers. Silently dropped.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Return Value</h3>
+        <p>Both <code>tapStream()</code> and <code>handleNonStreaming()</code> return the same shape:</p>
+        <pre><code>{
+  content: string,       // Full accumulated text
+  usage: {               // Token counts
+    prompt_tokens: number,
+    completion_tokens: number,
+    total_tokens: number,
+  },
+  stopReason: string,    // 'stop', 'length', 'tool_calls', or null on error
+  ttfbMs: number | null, // Time to first byte in milliseconds
+  error: { type, message } | null
+}</code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Non-Streaming Responses</h2>
+        <p>When <code>stream</code> is false (or absent), <code>handleNonStreaming()</code> buffers all generator chunks internally and returns a single JSON response:</p>
+
+        <pre><code>HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "choices": [{
+    "index": 0,
+    "message": { "role": "assistant", "content": "..." },
+    "finish_reason": "stop"
+  }],
+  "usage": { "prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150 }
+}</code></pre>
+
+        <p>Tool calls from the <code>done</code> chunk are included in the message as <code>tool_calls</code> if present. Errors during buffering return a 502 with an <code>upstream_error</code> type.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>WebSocket Implementation</h2>
+        <p>Soul Gateway implements WebSocket support from scratch using raw TCP sockets, without any external WebSocket library. The implementation follows RFC 6455.</p>
+
+        <h3>Upgrade Handshake</h3>
+        <p>The <code>handleUpgrade()</code> function in <code>ws/upgrade.mjs</code> processes the HTTP upgrade request:</p>
+        <ol>
+          <li>Validates dashboard authentication (401 if unauthenticated)</li>
+          <li>Extracts the <code>Sec-WebSocket-Key</code> header</li>
+          <li>Computes the accept key: <code>SHA1(key + "258EAFA5-E914-47DA-95CA-5BAB0DC85B11")</code> base64-encoded</li>
+          <li>Configures the socket: <code>setTimeout(0)</code>, <code>setNoDelay(true)</code>, <code>setKeepAlive(true, 30000)</code></li>
+          <li>Sends the 101 Switching Protocols response</li>
+          <li>Routes to the appropriate stream handler based on pathname</li>
+        </ol>
+
+        <h3>Frame Encoding</h3>
+        <p>The <code>encodeFrame(payload, opcode)</code> function creates WebSocket frames:</p>
+        <table>
+          <thead>
+            <tr><th>Payload Size</th><th>Header Size</th><th>Length Encoding</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>&lt; 126 bytes</td><td>2 bytes</td><td>Single byte</td></tr>
+            <tr><td>126 - 65535 bytes</td><td>4 bytes</td><td>16-bit unsigned (big-endian)</td></tr>
+            <tr><td>&gt; 65535 bytes</td><td>10 bytes</td><td>64-bit unsigned (big-endian)</td></tr>
+          </tbody>
+        </table>
+        <p>All server-to-client frames have the FIN bit set (no fragmentation) and are unmasked. Client-to-server frames are masked per the RFC.</p>
+
+        <h3>Frame Decoding</h3>
+        <p>The <code>decodeFrame(buf)</code> function parses incoming frames, handling the mask bit and variable-length payload headers. Opcodes handled:</p>
+        <table>
+          <thead>
+            <tr><th>Opcode</th><th>Type</th><th>Action</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>0x01</code></td><td>Text</td><td>Passed to <code>onMessage</code> callback</td></tr>
+            <tr><td><code>0x02</code></td><td>Binary</td><td>Passed to <code>onMessage</code> callback</td></tr>
+            <tr><td><code>0x08</code></td><td>Close</td><td>Marks socket dead, calls <code>onClose</code>, ends socket</td></tr>
+            <tr><td><code>0x09</code></td><td>Ping</td><td>Responds with Pong (<code>0x0A</code>) containing same payload</td></tr>
+            <tr><td><code>0x0A</code></td><td>Pong</td><td>Ignored (heartbeat acknowledgment)</td></tr>
+          </tbody>
+        </table>
+
+        <h3>WebSocket Helper (createWsHelper)</h3>
+        <p>Each upgraded connection gets a <code>ws</code> helper object wrapping the raw TCP socket:</p>
+        <pre><code>{
+  socket,                // Raw TCP socket
+  alive: boolean,        // Connection state flag
+  send(data),            // Encode and write a text frame
+  close(),               // Send close frame and end socket
+  onMessage: callback,   // Set by stream handler
+  onClose: callback,     // Set by stream handler
+}</code></pre>
+        <p>Incoming data is buffered and decoded in a loop, handling partial frames that span multiple TCP packets.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Ping/Pong Heartbeat</h2>
+        <p>Every WebSocket connection has a ping interval of <strong>15 seconds</strong>. This is critical for surviving Cloudflare tunnel idle timeouts. The heartbeat:</p>
+        <ul class="list">
+          <li>Sends an empty Ping frame (<code>opcode 0x09</code>) every 15s</li>
+          <li>If the send fails, marks the socket as dead and clears the interval</li>
+          <li>The interval is also cleared on socket close</li>
+          <li>Incoming Ping frames from clients are answered with Pong frames containing the same payload</li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>WebSocket Routes</h2>
+
+        <h3><code>/ws/v1/logs</code> -- Global Log Stream</h3>
+        <p>Handled by <code>handleLogStream()</code> in <code>ws/log-stream.mjs</code>. Subscribers receive a sanitized version of every completed pipeline request.</p>
+        <ul class="list">
+          <li><strong>Connection:</strong> Adds subscriber to a global <code>subscribers</code> Set. Sends <code>{ type: "connected", filters }</code>.</li>
+          <li><strong>Filters:</strong> Optional query params <code>soul_id</code> and <code>model</code> filter which logs are delivered. Filters can be updated at runtime by sending <code>{ type: "filter", filters: { ... } }</code>.</li>
+          <li><strong>Disconnection:</strong> Subscriber is removed from the Set. Dead subscribers are also pruned during broadcast.</li>
+        </ul>
+
+        <h3><code>/ws/v1/soul/:id</code> -- Soul-specific Stream</h3>
+        <p>Handled by <code>handleSoulStream()</code> in <code>ws/soul-stream.mjs</code>. Subscribers receive the full log entry (including response content) for a specific soul ID.</p>
+        <ul class="list">
+          <li>Subscribers are stored in a <code>Map&lt;soulId, Set&lt;ws&gt;&gt;</code></li>
+          <li>When no subscribers remain for a soul, the Map entry is deleted</li>
+          <li>Receives the unsanitized log entry (includes <code>response_content</code> and <code>request_messages</code>)</li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>SSE Log Streaming</h2>
+        <p>The <code>handleSseStream()</code> function in <code>log-stream.mjs</code> provides an alternative to WebSockets for environments that don't support them (e.g., some HTTP/1.0 proxies).</p>
+
+        <h3>Endpoint: <code>GET /api/v1/logs/stream</code></h3>
+        <p>Response headers:</p>
+        <pre><code>Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no</code></pre>
+
+        <ul class="list">
+          <li>Supports the same <code>soul_id</code> and <code>model</code> query-param filters as WebSocket</li>
+          <li>Sends a keepalive comment (<code>: keepalive</code>) every 15 seconds to prevent proxy timeouts</li>
+          <li>SSE subscribers are tracked in a separate <code>sseSubscribers</code> Set</li>
+          <li>Dead subscribers are detected when <code>res.write()</code> throws and cleaned up</li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Broadcast Architecture</h2>
+        <p>After every pipeline request completes (success or failure), two broadcast functions are called:</p>
+
+        <h3><code>broadcastLog(logEntry)</code></h3>
+        <p>Sends a sanitized log entry to all matching WebSocket and SSE subscribers. The sanitized version strips <code>request_messages</code> and <code>response_content</code> to reduce bandwidth, keeping only metadata:</p>
+        <pre><code>{
+  id, soul_id, requested_model, resolved_model, mode,
+  is_streaming, status_code, stop_reason, error_type,
+  error_message, latency_ms, ttfb_ms, prompt_tokens,
+  completion_tokens, total_tokens, total_cost,
+  retry_count, blocked_by_blacklist, is_truncated,
+  is_slow, prompt_size_warning, cache_hit,
+  started_at, completed_at
+}</code></pre>
+
+        <h3><code>broadcastToSoul(soulId, logEntry)</code></h3>
+        <p>Sends the full (unsanitized) log entry to subscribers of a specific soul. This includes the complete request messages and response content, enabling real-time monitoring of a specific API key's usage.</p>
+
+        <h3>Stream Statistics</h3>
+        <p>The <code>getStreamStats()</code> function returns the current count of active WebSocket and SSE subscribers, used by the <code>/metrics</code> endpoint and dashboard.</p>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>

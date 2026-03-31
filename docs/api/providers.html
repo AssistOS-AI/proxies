@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Provider Management - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway API Reference</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Providers</span>
+        <h1>Provider Management</h1>
+        <p>
+          Manage upstream LLM providers. Supports two authentication modes: traditional
+          API key providers (OpenAI, Anthropic, Groq, etc.) and managed OAuth providers
+          (Copilot, Kiro, Codex, Gemini) with device flow and PKCE authentication.
+        </p>
+      </section>
+
+      <!-- GET /api/v1/providers -->
+      <section class="section">
+        <h2>List Providers</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/providers</span>
+          </div>
+          <div class="endpoint-body">
+            <p>List all configured provider entries from the database.</p>
+
+            <h4>Response</h4>
+<pre><code>[
+  {
+    "id": 1,
+    "name": "copilot",
+    "display_name": "GitHub Copilot",
+    "protocol": "openai",
+    "base_url": "https://api.githubcopilot.com",
+    "auth_type": "managed",
+    "billing_type": "subscription",
+    "is_enabled": true,
+    "created_at": "2026-03-01T10:00:00.000Z"
+  },
+  {
+    "id": 2,
+    "name": "openai",
+    "display_name": "OpenAI (Direct)",
+    "protocol": "openai",
+    "base_url": "https://api.openai.com/v1/chat/completions",
+    "auth_type": null,
+    "billing_type": null,
+    "is_enabled": true,
+    "created_at": "2026-03-01T10:00:00.000Z"
+  }
+]</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- POST /api/v1/providers -->
+      <section class="section">
+        <h2>Create Provider</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/providers</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Create a new provider configuration. For API key providers, the <code>api_key</code>
+              field is required. For managed OAuth providers (<code>auth_type: "managed"</code>),
+              no API key is needed &mdash; authentication is handled via the OAuth flow.
+            </p>
+
+            <h4>Request Body</h4>
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>name</code></td><td>string</td><td>Yes</td><td>Unique provider name (e.g. <code>"openai"</code>, <code>"copilot"</code>).</td></tr>
+                <tr><td><code>base_url</code></td><td>string</td><td>Yes</td><td>Upstream API base URL.</td></tr>
+                <tr><td><code>api_key</code></td><td>string</td><td>Conditional</td><td>Required for non-managed-auth providers.</td></tr>
+                <tr><td><code>display_name</code></td><td>string</td><td>No</td><td>Human-readable name.</td></tr>
+                <tr><td><code>protocol</code></td><td>string</td><td>No</td><td>API protocol: <code>"openai"</code>, <code>"anthropic"</code>, or <code>"google"</code>.</td></tr>
+                <tr><td><code>auth_type</code></td><td>string</td><td>No</td><td>Set to <code>"managed"</code> for OAuth providers, <code>"internal"</code> for built-in.</td></tr>
+                <tr><td><code>billing_type</code></td><td>string</td><td>No</td><td><code>"subscription"</code> or <code>"api_key"</code>.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Example</h4>
+<pre><code>curl -X POST http://localhost:8042/api/v1/providers \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "groq",
+    "display_name": "Groq",
+    "base_url": "https://api.groq.com/openai/v1/chat/completions",
+    "protocol": "openai",
+    "api_key": "gsk_your_groq_key_here"
+  }'</code></pre>
+
+            <h4>Response (201 Created)</h4>
+            <p>Returns the created provider object. Returns <code>409</code> if the name already exists.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PUT /api/v1/providers/:id -->
+      <section class="section">
+        <h2>Update Provider</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-put">PUT</span>
+            <span>/api/v1/providers/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Update an existing provider configuration. Send only the fields to change.</p>
+            <h4>Response</h4>
+            <p>Returns the updated provider object, or <code>404</code> if not found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- DELETE /api/v1/providers/:id -->
+      <section class="section">
+        <h2>Delete Provider</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-delete">DELETE</span>
+            <span>/api/v1/providers/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Delete a provider configuration.</p>
+            <h4>Response</h4>
+<pre><code>{ "ok": true }</code></pre>
+            <p>Returns <code>404</code> if the provider is not found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/providers/templates -->
+      <section class="section">
+        <h2>Provider Templates</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/providers/templates</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Returns pre-configured templates for all supported providers. Each template
+              contains the default <code>display_name</code>, <code>protocol</code>,
+              <code>base_url</code>, and optionally <code>auth_type</code> and <code>billing_type</code>.
+              Used by the dashboard to pre-fill the provider creation form.
+            </p>
+
+            <h4>Available Templates</h4>
+            <table>
+              <thead>
+                <tr><th>Key</th><th>Display Name</th><th>Protocol</th><th>Auth Type</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>copilot</code></td><td>GitHub Copilot</td><td>openai</td><td>managed</td></tr>
+                <tr><td><code>axiologic_kiro</code></td><td>Kiro (AWS Claude)</td><td>openai</td><td>managed</td></tr>
+                <tr><td><code>codex</code></td><td>OpenAI Codex (OAuth)</td><td>openai</td><td>managed</td></tr>
+                <tr><td><code>gemini</code></td><td>Google Gemini (OAuth)</td><td>openai</td><td>managed</td></tr>
+                <tr><td><code>anthropic</code></td><td>Anthropic Claude (OAuth)</td><td>anthropic</td><td>managed</td></tr>
+                <tr><td><code>openai</code></td><td>OpenAI (Direct)</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>groq</code></td><td>Groq</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>deepseek</code></td><td>DeepSeek</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>nvidia</code></td><td>NVIDIA</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>fireworks</code></td><td>Fireworks AI</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>together</code></td><td>Together AI</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>deepinfra</code></td><td>DeepInfra</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>perplexity</code></td><td>Perplexity</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>mistral</code></td><td>Mistral</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>xai</code></td><td>xAI (Grok)</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>cohere</code></td><td>Cohere</td><td>openai</td><td>api_key</td></tr>
+                <tr><td><code>google</code></td><td>Google AI</td><td>google</td><td>api_key</td></tr>
+                <tr><td><code>search</code></td><td>Web Search (Built-in)</td><td>openai</td><td>internal</td></tr>
+                <tr><td><code>custom</code></td><td>Custom</td><td>openai</td><td>api_key</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- POST /api/v1/providers/:id/test -->
+      <section class="section">
+        <h2>Test Connectivity</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/providers/:id/test</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Test connectivity to a provider. For API key providers, this hits the upstream
+              <code>/models</code> endpoint with a 10-second timeout. For managed OAuth providers,
+              this checks the credential status.
+            </p>
+
+            <h4>Response (success)</h4>
+<pre><code>{ "ok": true, "model_count": 42 }</code></pre>
+
+            <h4>Response (OAuth, success)</h4>
+<pre><code>{ "ok": true, "message": "Authenticated (2 accounts)" }</code></pre>
+
+            <h4>Response (failure)</h4>
+<pre><code>{ "ok": false, "error": "401: Invalid API key" }</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- POST /api/v1/providers/:id/sync -->
+      <section class="section">
+        <h2>Sync Models</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/providers/:id/sync</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Discover models from the provider and sync them into the database. New models
+              are upserted with the <code>axl/&lt;provider&gt;/&lt;model&gt;</code> naming convention.
+              Models no longer returned by the provider are automatically disabled. If the
+              provider is a search provider, the <code>search</code> tier is updated with
+              the synced models.
+            </p>
+
+            <h4>Response</h4>
+<pre><code>{
+  "ok": true,
+  "synced": ["axl/groq/llama-3-70b", "axl/groq/llama-3-8b", "axl/groq/mixtral-8x7b"],
+  "disabled": 1
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/providers/:id/models -->
+      <section class="section">
+        <h2>Discover Models</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/providers/:id/models</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Discover available models from a provider without syncing them into the database.
+              For API key providers, queries the upstream <code>/models</code> endpoint. For
+              managed OAuth providers, uses OAuth credentials for the request, falling back to
+              the adapter's <code>knownModels</code> list or existing DB models if the endpoint
+              is not accessible.
+            </p>
+
+            <h4>Response</h4>
+<pre><code>[
+  { "id": "gpt-4o", "input_price": 2.5, "output_price": 10, "owned_by": "openai" },
+  { "id": "gpt-4o-mini", "input_price": 0.15, "output_price": 0.6, "owned_by": "openai" }
+]</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- OAuth Endpoints -->
+      <section class="section">
+        <h2>OAuth Authentication</h2>
+        <p>
+          Managed-auth providers (Copilot, Kiro, Codex, Gemini, Anthropic) use OAuth
+          device flow or PKCE for authentication. These endpoints manage the OAuth lifecycle.
+        </p>
+
+        <!-- POST /api/v1/providers/:id/auth/start -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/providers/:id/auth/start</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Start a new OAuth authentication flow. Returns a device code and verification
+              URL (for device flow) or an authorization URL (for PKCE flow). The user must
+              complete the flow in a browser.
+            </p>
+            <p>Returns <code>400</code> if the provider does not use managed auth.</p>
+
+            <h4>Response (Device Flow)</h4>
+<pre><code>{
+  "flow": "device",
+  "verification_uri": "https://github.com/login/device",
+  "user_code": "ABCD-1234",
+  "expires_in": 900,
+  "interval": 5
+}</code></pre>
+
+            <h4>Response (PKCE Flow)</h4>
+<pre><code>{
+  "flow": "pkce",
+  "authorization_url": "https://accounts.google.com/o/oauth2/v2/auth?...",
+  "state": "random-state-value"
+}</code></pre>
+          </div>
+        </div>
+
+        <!-- GET /api/v1/providers/:id/auth/poll -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/providers/:id/auth/poll</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Poll the status of an in-progress device flow. Returns
+              <code>"pending"</code> while waiting for user authorization,
+              <code>"complete"</code> when tokens have been received.
+            </p>
+
+            <h4>Response (pending)</h4>
+<pre><code>{ "status": "pending" }</code></pre>
+
+            <h4>Response (complete)</h4>
+<pre><code>{ "status": "complete", "account": "user@example.com" }</code></pre>
+          </div>
+        </div>
+
+        <!-- POST /api/v1/providers/:id/auth/callback -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/providers/:id/auth/callback</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Manual callback handler for PKCE flows. When the local redirect URI is not
+              reachable, the user can paste the authorization code and state from the
+              callback URL.
+            </p>
+
+            <h4>Request Body</h4>
+            <table>
+              <thead>
+                <tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>code</code></td><td>string</td><td>Yes</td><td>Authorization code from the callback URL.</td></tr>
+                <tr><td><code>state</code></td><td>string</td><td>Yes</td><td>State parameter from the callback URL.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response</h4>
+<pre><code>{ "status": "complete", "account": "user@example.com" }</code></pre>
+          </div>
+        </div>
+
+        <!-- GET /api/v1/providers/:id/auth/status -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/providers/:id/auth/status</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Get the current authentication status for a managed-auth provider. Returns
+              account details and whether credentials are active.
+            </p>
+
+            <h4>Response (active)</h4>
+<pre><code>{
+  "auth_type": "managed",
+  "status": "active",
+  "accounts": [
+    { "email": "user@example.com", "added_at": "2026-03-15T10:00:00Z" }
+  ]
+}</code></pre>
+
+            <h4>Response (no accounts)</h4>
+<pre><code>{
+  "auth_type": "managed",
+  "status": "no_accounts",
+  "accounts": []
+}</code></pre>
+
+            <h4>Response (API key provider)</h4>
+<pre><code>{ "auth_type": "api_key" }</code></pre>
+          </div>
+        </div>
+
+        <!-- DELETE /api/v1/providers/:id/auth/accounts/:idx -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-delete">DELETE</span>
+            <span>/api/v1/providers/:id/auth/accounts/:idx</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Remove an OAuth account by its index from a managed-auth provider.</p>
+
+            <h4>Path Parameters</h4>
+            <table>
+              <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>id</code></td><td>Provider ID.</td></tr>
+                <tr><td><code>idx</code></td><td>Zero-based account index.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response</h4>
+<pre><code>{ "ok": true }</code></pre>
+          </div>
+        </div>
+
+        <!-- POST /api/v1/providers/:id/auth/reset-quota -->
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-post">POST</span>
+            <span>/api/v1/providers/:id/auth/reset-quota</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Reset the quota tracking counters for a managed-auth provider.</p>
+
+            <h4>Response</h4>
+<pre><code>{ "ok": true }</code></pre>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

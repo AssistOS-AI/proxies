@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Logs &amp; Streaming - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway API Reference</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Observability</span>
+        <h1>Logs &amp; Real-Time Streaming</h1>
+        <p>
+          Query call logs, stream them in real time via WebSocket or SSE, and explore
+          agent/session hierarchy. Every request through the pipeline is logged with
+          full request/response details, latency, costs, and error information.
+        </p>
+      </section>
+
+      <!-- GET /api/v1/logs -->
+      <section class="section">
+        <h2>Query Logs</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/logs</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Query call logs with filtering, sorting, and pagination. Returns a paginated
+              list of log entries matching the specified criteria.
+            </p>
+
+            <h4>Query Parameters</h4>
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>soul_id</code></td><td>string</td><td>Filter by soul ID (from <code>X-Soul-Id</code> header).</td></tr>
+                <tr><td><code>model</code></td><td>string</td><td>Filter by resolved model name.</td></tr>
+                <tr><td><code>from</code></td><td>string</td><td>Start timestamp (ISO 8601). Filters <code>started_at &gt;= from</code>.</td></tr>
+                <tr><td><code>to</code></td><td>string</td><td>End timestamp (ISO 8601). Filters <code>started_at &lt;= to</code>.</td></tr>
+                <tr><td><code>status</code></td><td>string</td><td>Filter by HTTP status code (e.g. <code>"200"</code>, <code>"429"</code>).</td></tr>
+                <tr><td><code>error_type</code></td><td>string</td><td>Filter by error type (e.g. <code>"rate_limit_error"</code>).</td></tr>
+                <tr><td><code>keyword</code></td><td>string</td><td>Full-text search in request/response content.</td></tr>
+                <tr><td><code>agent_name</code></td><td>string</td><td>Filter by agent name.</td></tr>
+                <tr><td><code>api_key_id</code></td><td>integer</td><td>Filter by API key ID.</td></tr>
+                <tr><td><code>limit</code></td><td>integer</td><td>Maximum results to return. Default: 50.</td></tr>
+                <tr><td><code>offset</code></td><td>integer</td><td>Offset for pagination. Default: 0.</td></tr>
+                <tr><td><code>sort</code></td><td>string</td><td>Sort field (e.g. <code>"started_at"</code>, <code>"latency_ms"</code>).</td></tr>
+                <tr><td><code>order</code></td><td>string</td><td>Sort direction: <code>"asc"</code> or <code>"desc"</code>.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Example</h4>
+<pre><code>curl "http://localhost:8042/api/v1/logs?model=axl/copilot/gpt-4o&amp;status=200&amp;limit=10&amp;sort=started_at&amp;order=desc"</code></pre>
+
+            <h4>Response</h4>
+<pre><code>{
+  "rows": [
+    {
+      "id": 1234,
+      "soul_id": "my-app",
+      "requested_model": "fast",
+      "resolved_model": "axl/copilot/gpt-4o",
+      "mode": "fast",
+      "is_streaming": true,
+      "status_code": 200,
+      "stop_reason": "stop",
+      "latency_ms": 847,
+      "ttfb_ms": 312,
+      "prompt_tokens": 156,
+      "completion_tokens": 89,
+      "total_tokens": 245,
+      "input_cost": "0.000390",
+      "output_cost": "0.000890",
+      "total_cost": "0.001280",
+      "is_free": true,
+      "agent_name": "coral-agent",
+      "session_id": "sess-abc123",
+      "retry_count": 0,
+      "is_truncated": false,
+      "is_slow": false,
+      "cache_hit": false,
+      "started_at": "2026-03-31T14:23:00.000Z",
+      "completed_at": "2026-03-31T14:23:00.847Z"
+    }
+  ],
+  "total": 1542
+}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/logs/:id -->
+      <section class="section">
+        <h2>Get Log Entry</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/logs/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Get a single log entry by ID with full details including request messages
+              and response content.
+            </p>
+
+            <h4>Path Parameters</h4>
+            <table>
+              <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>id</code></td><td>Log entry ID (integer).</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response</h4>
+            <p>Returns the full log entry object, or <code>404</code> if not found.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/logs/stream (SSE) -->
+      <section class="section">
+        <h2>SSE Log Stream</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/logs/stream</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Real-time log stream using Server-Sent Events (SSE). The connection stays open
+              and receives log entries as they are generated. A keepalive comment is sent
+              every 15 seconds to prevent proxy timeouts.
+            </p>
+
+            <h4>Query Parameters</h4>
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>soul_id</code></td><td>string</td><td>Filter events by soul ID.</td></tr>
+                <tr><td><code>model</code></td><td>string</td><td>Filter events by resolved model.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Response Headers</h4>
+<pre><code>Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+X-Accel-Buffering: no</code></pre>
+
+            <h4>Event Format</h4>
+<pre><code>data: {"type":"connected","filters":{"soul_id":null,"model":null}}
+
+: keepalive
+
+data: {"type":"log","data":{"id":1234,"soul_id":"my-app","resolved_model":"axl/copilot/gpt-4o","status_code":200,"latency_ms":847,"total_cost":"0.001280","started_at":"2026-03-31T14:23:00.000Z"}}</code></pre>
+
+            <h4>Example</h4>
+<pre><code>curl -N "http://localhost:8042/api/v1/logs/stream?model=axl/copilot/gpt-4o"</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- WS /ws/v1/logs -->
+      <section class="section">
+        <h2>WebSocket Log Stream</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">WS</span>
+            <span>/ws/v1/logs</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Real-time log stream over WebSocket. Receives the same log entry payloads
+              as the SSE endpoint. Supports dynamic filter updates via messages. The server
+              sends a ping frame every 15 seconds as a heartbeat.
+            </p>
+
+            <h4>Connection</h4>
+<pre><code>ws://localhost:8042/ws/v1/logs?soul_id=my-app&amp;model=axl/copilot/gpt-4o</code></pre>
+
+            <h4>Initial Message (from server)</h4>
+<pre><code>{"type": "connected", "filters": {"soul_id": "my-app", "model": "axl/copilot/gpt-4o"}}</code></pre>
+
+            <h4>Log Event (from server)</h4>
+<pre><code>{
+  "type": "log",
+  "data": {
+    "id": 1234,
+    "soul_id": "my-app",
+    "requested_model": "fast",
+    "resolved_model": "axl/copilot/gpt-4o",
+    "status_code": 200,
+    "latency_ms": 847,
+    "ttfb_ms": 312,
+    "prompt_tokens": 156,
+    "completion_tokens": 89,
+    "total_tokens": 245,
+    "total_cost": "0.001280",
+    "retry_count": 0,
+    "is_truncated": false,
+    "is_slow": false,
+    "cache_hit": false,
+    "started_at": "2026-03-31T14:23:00.000Z",
+    "completed_at": "2026-03-31T14:23:00.847Z"
+  }
+}</code></pre>
+
+            <h4>Update Filters (client to server)</h4>
+            <p>Send a JSON message to update filters dynamically without reconnecting:</p>
+<pre><code>{"type": "filter", "filters": {"model": "axl/anthropic/claude-sonnet-4"}}</code></pre>
+
+            <h4>Filter Update Confirmation (from server)</h4>
+<pre><code>{"type": "filter_updated", "filters": {"soul_id": "my-app", "model": "axl/anthropic/claude-sonnet-4"}}</code></pre>
+
+            <div class="callout">
+              <strong>Note:</strong> Broadcast payloads are sanitized to exclude full prompt/response
+              content. They include metadata fields only: IDs, model info, status, latency, tokens,
+              cost, error info, and timestamps.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- WS /ws/v1/soul/:id -->
+      <section class="section">
+        <h2>Per-Soul WebSocket Stream</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">WS</span>
+            <span>/ws/v1/soul/:id</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              WebSocket stream scoped to a specific soul ID. Receives only log entries
+              for the specified soul. Useful for per-application monitoring dashboards.
+            </p>
+
+            <h4>Connection</h4>
+<pre><code>ws://localhost:8042/ws/v1/soul/my-app-id</code></pre>
+
+            <h4>Initial Message</h4>
+<pre><code>{"type": "connected", "soul_id": "my-app-id"}</code></pre>
+
+            <h4>Log Events</h4>
+            <p>Same format as the general log stream, but only events matching this soul ID.</p>
+<pre><code>{"type": "log", "data": { ... }}</code></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/agents -->
+      <section class="section">
+        <h2>List Agents</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/agents</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              List all unique agent names that have made requests through the gateway,
+              with aggregate statistics.
+            </p>
+
+            <h4>Query Parameters</h4>
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>api_key_id</code></td><td>integer</td><td>Filter by API key ID.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/sessions -->
+      <section class="section">
+        <h2>List Sessions</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/sessions</span>
+          </div>
+          <div class="endpoint-body">
+            <p>List sessions with optional filtering and pagination.</p>
+
+            <h4>Query Parameters</h4>
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>api_key_id</code></td><td>integer</td><td>Filter by API key ID.</td></tr>
+                <tr><td><code>agent_name</code></td><td>string</td><td>Filter by agent name.</td></tr>
+                <tr><td><code>limit</code></td><td>integer</td><td>Maximum results to return.</td></tr>
+                <tr><td><code>offset</code></td><td>integer</td><td>Offset for pagination.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/sessions/:id/logs -->
+      <section class="section">
+        <h2>Session Logs</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/sessions/:id/logs</span>
+          </div>
+          <div class="endpoint-body">
+            <p>Get all log entries for a specific session.</p>
+
+            <h4>Path Parameters</h4>
+            <table>
+              <thead><tr><th>Parameter</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>id</code></td><td>Session identifier string.</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Query Parameters</h4>
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>limit</code></td><td>integer</td><td>Maximum results.</td></tr>
+                <tr><td><code>offset</code></td><td>integer</td><td>Pagination offset.</td></tr>
+                <tr><td><code>sort</code></td><td>string</td><td>Sort field.</td></tr>
+                <tr><td><code>order</code></td><td>string</td><td><code>"asc"</code> or <code>"desc"</code>.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- GET /api/v1/tree -->
+      <section class="section">
+        <h2>Agent/Session Tree</h2>
+
+        <div class="endpoint">
+          <div class="endpoint-header">
+            <span class="method method-get">GET</span>
+            <span>/api/v1/tree</span>
+          </div>
+          <div class="endpoint-body">
+            <p>
+              Get a hierarchical view of agents and their sessions. Useful for building
+              tree-view navigation in the dashboard.
+            </p>
+
+            <h4>Query Parameters</h4>
+            <table>
+              <thead>
+                <tr><th>Parameter</th><th>Type</th><th>Description</th></tr>
+              </thead>
+              <tbody>
+                <tr><td><code>from</code></td><td>string</td><td>Start timestamp (ISO 8601).</td></tr>
+                <tr><td><code>to</code></td><td>string</td><td>End timestamp (ISO 8601).</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

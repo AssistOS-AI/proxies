@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Soul ID - Soul Gateway Wiki</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Wiki</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Wiki</span>
+        <h1>Soul ID</h1>
+        <p>A voluntary request header that identifies the human or system behind an API call, enabling per-soul log filtering and real-time WebSocket subscriptions.</p>
+      </section>
+
+      <section class="section">
+        <h2>What It Is</h2>
+        <p>The <strong>Soul ID</strong> is a string value sent via the <code>X-Soul-Id</code> HTTP header on each request to <code>/v1/chat/completions</code>. It represents the identity of the end user, agent, or system making the call. Unlike the <a href="api-key.html">API Key</a>, which authenticates the request, the Soul ID is an informational label &mdash; it is not verified or authenticated by the gateway.</p>
+
+        <div class="callout">
+          <strong>Default value:</strong> If the <code>X-Soul-Id</code> header is not provided, the pipeline assigns the value <code>"anonymous"</code>.
+        </div>
+
+        <h2>How It Flows Through the Pipeline</h2>
+        <p>The Soul ID is extracted early in the <a href="../architecture/01-request-pipeline.html">request pipeline</a>, during the authentication step:</p>
+        <ol>
+          <li>The <code>authenticate()</code> function in <code>auth.mjs</code> reads <code>req.headers['x-soul-id']</code> and falls back to <code>"anonymous"</code>.</li>
+          <li>The value is returned as part of the auth context object (<code>authCtx.soul_id</code>).</li>
+          <li>The pipeline stores it in <code>logEntry.soul_id</code>, which is persisted to the <code>call_logs</code> table in PostgreSQL.</li>
+          <li>After the response completes, the log entry is broadcast to WebSocket subscribers via <code>broadcastToSoul(authCtx.soul_id, broadcastEntry)</code>.</li>
+        </ol>
+
+        <pre><code>// From auth.mjs
+const soulId = req.headers['x-soul-id'] || 'anonymous';
+
+return {
+  api_key_id: keyInfo.id,
+  rpm_limit: keyInfo.rpm_limit,
+  tpm_limit: keyInfo.tpm_limit,
+  key_daily_budget: keyInfo.daily_budget != null ? Number(keyInfo.daily_budget) : null,
+  soul_id: soulId,
+};</code></pre>
+
+        <h2>Purpose</h2>
+        <table>
+          <thead>
+            <tr><th>Use Case</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Log filtering</strong></td>
+              <td>The dashboard and logs API can filter call logs by <code>soul_id</code>, allowing you to see all requests made by a specific user or system.</td>
+            </tr>
+            <tr>
+              <td><strong>WebSocket subscriptions</strong></td>
+              <td>Clients can subscribe to <code>/ws/v1/soul/:id</code> to receive real-time log events for a specific Soul ID. The pipeline calls <code>broadcastToSoul()</code> after each completed request.</td>
+            </tr>
+            <tr>
+              <td><strong>Audit trail</strong></td>
+              <td>The <code>soul_id</code> column in <code>call_logs</code> links every LLM call to the identity that initiated it.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>Related Headers</h2>
+        <p>Soul Gateway recognizes three identification headers, all voluntary and unauthenticated:</p>
+        <table>
+          <thead>
+            <tr><th>Header</th><th>Pipeline Field</th><th>Purpose</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>X-Soul-Id</code></td>
+              <td><code>soul_id</code></td>
+              <td>Identifies the human or system behind the request.</td>
+            </tr>
+            <tr>
+              <td><code>X-Soul-Agent</code></td>
+              <td><code>agent_name</code></td>
+              <td>Identifies the AI agent or coding assistant making the call. If not set, the pipeline falls back to parsing the <code>User-Agent</code> and <code>x-coding-assistant</code> headers using pattern matching (recognizes Claude Code, Codex CLI, Aider, Cursor, Copilot, Cline, Windsurf, and others).</td>
+            </tr>
+            <tr>
+              <td><code>X-Soul-Session</code></td>
+              <td><code>session_id</code></td>
+              <td>Groups related requests into a logical session for analysis.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2>Agent Detection Fallback</h2>
+        <p>When <code>X-Soul-Agent</code> is not provided, the <code>parseAgentName()</code> function attempts to identify the agent from request headers:</p>
+        <ol>
+          <li>Checks the <code>x-coding-assistant</code> header first (e.g., <code>"aider-0.72.1"</code> yields <code>"aider"</code>).</li>
+          <li>Matches the <code>User-Agent</code> string against known patterns for 13 agents including Claude Code, Codex CLI, Gemini CLI, Cursor, Copilot, Cline, Roo Code, Windsurf, and Amp.</li>
+          <li>Falls back to extracting the first product token from the User-Agent, filtering out generic runtime tokens like <code>node</code>, <code>python</code>, <code>curl</code>.</li>
+          <li>Returns <code>"unknown"</code> if no match is found.</li>
+        </ol>
+
+        <h2>Example Request</h2>
+        <pre><code>curl https://soul.example.dev/v1/chat/completions \
+  -H "Authorization: Bearer sk-soul-..." \
+  -H "X-Soul-Id: user-42" \
+  -H "X-Soul-Agent: my-agent" \
+  -H "X-Soul-Session: session-abc" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "fast", "messages": [{"role": "user", "content": "Hello"}]}'</code></pre>
+
+        <h2>See Also</h2>
+        <ul>
+          <li><a href="../architecture/01-request-pipeline.html">Architecture: Request Pipeline</a> &mdash; full lifecycle of a chat completion request</li>
+          <li><a href="api-key.html">Wiki: API Key</a> &mdash; the authentication mechanism (unlike Soul ID, which is informational only)</li>
+          <li><a href="../api/index.html">API Reference</a> &mdash; logs endpoints for querying by soul_id</li>
+        </ul>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

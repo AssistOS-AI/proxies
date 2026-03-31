@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Configuration - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Configuration</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Configuration</span>
+        <h1>Configuration Guide</h1>
+        <p>Everything you need to configure Soul Gateway: environment variables, the Ploinky manifest that defines the container, and the deployment lifecycle from install to production.</p>
+      </section>
+
+      <section class="section">
+        <div class="grid">
+
+          <a class="card" href="environment.html">
+            <span class="tag">Reference</span>
+            <h3>Environment Variables</h3>
+            <p>Complete reference of every environment variable and internal default: port, PostgreSQL connection, encryption, provider API keys, rate limits, retry behavior, cooldowns, and log retention.</p>
+          </a>
+
+          <a class="card" href="manifest.html">
+            <span class="tag">Ploinky</span>
+            <h3>Ploinky Manifest</h3>
+            <p>The <code>manifest.json</code> file that tells Ploinky how to build, install, and run the Soul Gateway container &mdash; including image, commands, env declarations, port mappings, and service dependencies.</p>
+          </a>
+
+          <a class="card" href="deployment.html">
+            <span class="tag">Operations</span>
+            <h3>Deployment Guide</h3>
+            <p>Step-by-step deployment: install.sh setup, startup.sh boot sequence, application initialization order, deploy.sh for production, health checks, and graceful shutdown.</p>
+          </a>
+
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

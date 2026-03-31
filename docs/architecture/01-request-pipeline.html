@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Request Pipeline - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Architecture</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Part 1</span>
+        <h1>Request Pipeline</h1>
+        <p>The full lifecycle of a chat completion request, from HTTP ingress through authentication, routing, dispatch, streaming, cost calculation, and real-time broadcast.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Overview</h2>
+        <p>Every request to <code>/v1/chat/completions</code> (or its alias <code>/chat/completions</code>) enters the <code>pipeline()</code> function in <code>pipeline/pipeline.mjs</code>. The pipeline is a single async function that orchestrates 13 discrete steps in sequence. Additional routes exist for the Anthropic Messages API (<code>/v1/messages</code>) and OpenAI Responses API (<code>/v1/responses</code>), each handled by dedicated proxy functions.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>HTTP Routing</h2>
+        <p>The HTTP server is created in <code>server.mjs</code> using Node's built-in <code>http.createServer</code>. Routes are matched by pathname and method in a flat if-else chain:</p>
+
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Path</th><th>Handler</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>GET</code></td><td><code>/health</code></td><td>Returns <code>{ status: "ok", uptime }</code></td></tr>
+            <tr><td><code>GET</code></td><td><code>/metrics</code></td><td>System metrics (unauthenticated)</td></tr>
+            <tr><td><code>POST</code></td><td><code>/v1/chat/completions</code></td><td><code>pipeline()</code></td></tr>
+            <tr><td><code>POST</code></td><td><code>/v1/messages</code></td><td><code>anthropicProxy()</code></td></tr>
+            <tr><td><code>POST</code></td><td><code>/v1/responses</code></td><td><code>openaiResponsesProxy()</code></td></tr>
+            <tr><td><code>GET</code></td><td><code>/v1/models</code></td><td>API router (model listing)</td></tr>
+            <tr><td><code>GET</code></td><td><code>/v1/tiers</code></td><td>API router (tier listing)</td></tr>
+            <tr><td><code>*</code></td><td><code>/api/v1/*</code></td><td>Management API (dashboard-auth required)</td></tr>
+            <tr><td><code>GET</code></td><td><code>/</code>, static assets</td><td>Dashboard SPA</td></tr>
+          </tbody>
+        </table>
+
+        <p>CORS preflight is handled by <code>handleCors()</code> at the top of the request handler. WebSocket upgrade requests are skipped in the HTTP handler and caught by the server's <code>'upgrade'</code> event, which delegates to <code>handleUpgrade()</code>.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Pipeline Flow Diagram</h2>
+        <pre class="diagram"><code>
+  POST /v1/chat/completions
+           |
+     1. authenticate()
+     Bearer token --> api_key lookup (hash match)
+     Returns: { api_key_id, rpm_limit, tpm_limit, key_daily_budget, soul_id }
+           |
+     2. Agent & Session identification
+     X-Soul-Agent header (or User-Agent parse) --> agentName
+     X-Soul-Session header --> sessionId
+           |
+     3. readJsonBody()
+     Validate: model + messages required
+           |
+     4. resolveModel(body.model)
+     Direct lookup --> Tier resolution --> Fallback chain
+     Returns: { resolvedModel, providerKey, providerModel, ... }
+           |
+     5. Pre-dispatch middlewares
+     Tier middlewares first, then model middlewares (sorted by sort_order)
+     Can ABORT (error or success/cache-hit) or MUTATE messages
+           |
+     6. Prompt hash
+     SHA-256( JSON(messages) || "||" || resolvedModel )
+           |
+     7. Prompt size check
+     Byte-size of request, warning flag if oversized
+           |
+     8. Dispatch loop (up to maxModelRetries attempts)
+     +--------------------------------------+
+     |  acquireModelSlot() (concurrency)    |
+     |  dispatchWithRetry() (up to 3 HTTP   |
+     |    retries with exponential backoff) |
+     |  tapStream() or handleNonStreaming() |
+     +--------------------------------------+
+     On transient error --> cooldown model --> re-resolve --> retry next model
+           |
+     9. Cost calculation
+     Token-based (per 1M tokens) or per-request pricing
+           |
+    10. Post-dispatch middlewares
+     Budget tracking, response filtering, etc.
+           |
+    11. Response checks
+     Truncation flag, slow-request flag
+           |
+    12. insertLog() into call_logs (partitioned)
+           |
+    13. broadcastLog() + broadcastToSoul()
+     Real-time push to WebSocket & SSE subscribers
+        </code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Step 1: Authentication</h2>
+        <p>The <code>authenticate()</code> function in <code>pipeline/auth.mjs</code> extracts the Bearer token from the <code>Authorization</code> header. It calls <code>resolveApiKey(rawKey)</code> which hashes the key with SHA-256 and looks it up in the <code>api_keys</code> table by <code>key_hash</code>. Keys that are revoked or expired are rejected.</p>
+
+        <p>The returned context object contains:</p>
+        <ul class="list">
+          <li><code>api_key_id</code> -- UUID of the matched key</li>
+          <li><code>rpm_limit</code> -- requests per minute limit (default 60)</li>
+          <li><code>tpm_limit</code> -- tokens per minute limit (default 100,000)</li>
+          <li><code>key_daily_budget</code> -- daily spend limit in USD (default $2)</li>
+          <li><code>soul_id</code> -- from the <code>X-Soul-Id</code> header, or <code>"anonymous"</code></li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Step 2: Agent &amp; Session Identification</h2>
+        <p>The agent name is resolved from headers in priority order:</p>
+        <ol>
+          <li><code>X-Soul-Agent</code> header (injected by achillesAgentLib's <code>LLMClient.mjs</code> from the <code>AGENT_NAME</code> env var)</li>
+          <li>Parsed from <code>User-Agent</code> and <code>X-Coding-Assistant</code> headers (for IDE integrations)</li>
+        </ol>
+        <p>The session ID is read from the optional <code>X-Soul-Session</code> header.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Step 3: Body Parsing &amp; Validation</h2>
+        <p><code>readJsonBody()</code> reads the full request body and parses it as JSON. The pipeline validates that both <code>model</code> and <code>messages</code> fields are present. The <code>stream</code> flag is captured for later use. All additional parameters (e.g., <code>tools</code>, <code>tool_choice</code>, <code>temperature</code>) are passed through to the upstream provider via destructured <code>llmParams</code>.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Step 4: Model Routing</h2>
+        <p><code>resolveModel(body.model)</code> resolves the requested model name to a concrete provider and upstream model. See <a href="06-model-routing.html">Part 6: Model Routing</a> for the full algorithm. The returned <code>modelInfo</code> object includes the provider key, upstream model name, pricing data, concurrency limits, and optional tier context.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Steps 5-6: Pre-dispatch Middlewares &amp; Prompt Hash</h2>
+        <p>If the resolved model has a tier ID or model config ID, pre-dispatch middlewares are loaded and executed. See <a href="04-middleware-framework.html">Part 4: Middleware Framework</a>. Middlewares can:</p>
+        <ul class="list">
+          <li><strong>Mutate</strong> the messages array (e.g., context compression, system prompt injection)</li>
+          <li><strong>Abort with error</strong> (e.g., rate limiting, budget enforcement, blacklist blocking)</li>
+          <li><strong>Abort with success</strong> (e.g., cache hit returning a cached response with status 200)</li>
+        </ul>
+        <p>After middlewares run, the prompt hash is computed as <code>SHA-256(JSON(messages) + "||" + resolvedModel)</code>. This uses the potentially-modified messages, so middleware mutations affect the hash.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Step 7: Dispatch with Retry &amp; Cooldown</h2>
+        <p>The dispatch loop has two levels of retry:</p>
+
+        <h3>Level 1: Model-level retry (cooldown cascade)</h3>
+        <p>Up to <code>config.maxModelRetries</code> (default 5) attempts. On each iteration:</p>
+        <ol>
+          <li>Acquire a concurrency slot via <code>acquireModelSlot()</code></li>
+          <li>Call <code>dispatchWithRetry()</code> for the current model</li>
+          <li>On transient error (payment_required, rate_limit_error): put model in cooldown, re-resolve to get the next model in the tier</li>
+          <li>On provider/model-level error: cascade immediately (no cooldown) to the next model</li>
+          <li>Guard against resolving a previously-attempted model (tracks in <code>attemptedModels</code> Set)</li>
+        </ol>
+
+        <h3>Level 2: HTTP-level retry (exponential backoff)</h3>
+        <p><code>dispatchWithRetry()</code> in <code>retry.mjs</code> retries up to <code>config.maxRetries</code> (default 3) times with exponential backoff:</p>
+        <ul class="list">
+          <li>Base delay: 1000ms, multiplier: 2x, max: 30000ms, jitter: +/-20%</li>
+          <li>The generator is "peeked" -- the first chunk is consumed to verify connectivity. If the first <code>.next()</code> throws, the retry loop catches it.</li>
+          <li>Once chunks start flowing, retry is impossible -- mid-stream errors are passed through.</li>
+          <li>For managed OAuth providers, a 402 (payment required) triggers account rotation before retry.</li>
+        </ul>
+
+        <p>Each retry attempt's status, error type, and delay are recorded in <code>retriesDetail</code> for the call log.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Steps 8-9: Stream Capture &amp; Cost Calculation</h2>
+        <p>If <code>body.stream</code> is true, <code>tapStream()</code> consumes the async generator and re-encodes each chunk as an OpenAI SSE event. Otherwise, <code>handleNonStreaming()</code> buffers all chunks and returns a single JSON response. Both functions return <code>{ content, usage, stopReason, ttfbMs, error }</code>.</p>
+
+        <p>Cost is then calculated by <code>calculateCost()</code>:</p>
+        <ul class="list">
+          <li><strong>Token-based pricing:</strong> <code>inputCost = (prompt_tokens / 1M) * inputPrice</code>, same for output</li>
+          <li><strong>Per-request pricing:</strong> flat <code>requestCost</code> regardless of tokens (used for Copilot and Kiro models)</li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Steps 10-13: Post-dispatch, Logging, Broadcast</h2>
+        <p>Post-dispatch middlewares receive the response content, usage, and cost metadata. For streaming responses, only streaming-capable middlewares run (since chunks have already been sent to the client).</p>
+
+        <p>Response checks flag truncated responses (<code>finish_reason !== 'stop'</code>) and slow requests (latency exceeding <code>config.slowRequestMs</code>, default 30s).</p>
+
+        <p>The complete log entry is inserted into the <code>call_logs</code> table (monthly-partitioned). Finally, <code>broadcastLog()</code> pushes a sanitized version to all WebSocket and SSE subscribers, and <code>broadcastToSoul()</code> sends the full entry to soul-specific subscribers.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Error Handling</h2>
+        <p>All errors are caught by the outer try/catch in <code>pipeline()</code>. The error class hierarchy determines the HTTP response:</p>
+
+        <table>
+          <thead>
+            <tr><th>Error Class</th><th>HTTP Status</th><th>Error Type</th><th>Trigger</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>AuthError</code></td><td>401</td><td><code>authentication_error</code></td><td>Missing/invalid/expired API key</td></tr>
+            <tr><td><code>RateLimitError</code></td><td>429</td><td><code>rate_limit_error</code></td><td>RPM or TPM exceeded</td></tr>
+            <tr><td><code>BudgetExceededError</code></td><td>429</td><td><code>budget_exceeded</code></td><td>Daily or monthly budget exceeded</td></tr>
+            <tr><td><code>BlacklistError</code></td><td>400</td><td><code>content_blocked</code></td><td>Prompt matches blacklist rule</td></tr>
+            <tr><td><code>ModelNotFoundError</code></td><td>404</td><td><code>model_not_found</code></td><td>Unknown or disabled model</td></tr>
+            <tr><td><code>LoopDetectedError</code></td><td>429</td><td><code>loop_detected</code></td><td>Excessive repeated requests</td></tr>
+            <tr><td><code>QueueTimeoutError</code></td><td>503</td><td><code>queue_timeout</code></td><td>Concurrency slot wait exceeded 60s</td></tr>
+            <tr><td><code>UpstreamError</code></td><td>502</td><td><code>upstream_error</code></td><td>Provider returned error</td></tr>
+            <tr><td><code>SoulGatewayError</code></td><td>500</td><td><code>internal_error</code></td><td>Base class for all gateway errors</td></tr>
+          </tbody>
+        </table>
+
+        <p>All <code>SoulGatewayError</code> subclasses carry a <code>status</code>, <code>type</code>, and optionally <code>retryAfter</code>. When <code>retryAfter</code> is set, the response includes a <code>Retry-After</code> header. Regardless of error type, the pipeline always attempts to insert a log entry (via <code>safeInsertLog()</code> which swallows DB errors) so failures are tracked.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Request ID</h2>
+        <p>Every request is assigned a unique ID in the format <code>chatcmpl-{uuid}</code>. This ID is used in all SSE chunks and the final JSON response, matching the OpenAI convention for <code>chat.completion</code> objects.</p>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>

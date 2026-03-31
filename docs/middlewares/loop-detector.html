@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Loop Detector Middleware - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Middlewares</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag type-both">both</span>
+        <h1>Loop Detector Middleware</h1>
+        <p>Detects agent loops by analyzing response similarity and conversation growth patterns, with configurable intervention strategies.</p>
+      </section>
+
+      <section class="section">
+        <h2>Overview</h2>
+        <table>
+          <thead>
+            <tr><th>Property</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>File</td><td><code>src/middlewares/loop-detector.mjs</code></td></tr>
+            <tr><td>Name</td><td><code>loop-detector</code></td></tr>
+            <tr><td>Type</td><td><code>both</code> (pre-dispatch + post-dispatch)</td></tr>
+            <tr><td>Version</td><td>2.0.0</td></tr>
+            <tr><td>Streaming</td><td>Supported &mdash; the <code>after()</code> hook records fingerprints for streaming responses too</td></tr>
+          </tbody>
+        </table>
+        <p>The loop detector solves a common problem with agentic LLM workflows: an agent gets stuck in a repetitive cycle, calling the same tools with the same arguments and receiving the same responses, burning tokens without making progress. The middleware detects this pattern and can intervene, block, or just log it.</p>
+      </section>
+
+      <section class="section">
+        <h2>Tracking ID Resolution</h2>
+        <p>Each agent session is tracked by a unique ID. The <code>resolveTrackingId()</code> function uses the following priority:</p>
+        <ol>
+          <li><strong>Session ID</strong> (<code>ctx.sessionId</code>) &mdash; preferred, since it represents a contiguous conversation from the same key + agent within the session timeout window.</li>
+          <li><strong>Fallback:</strong> <code>apiKeyId:agentName</code> &mdash; when no session ID is available, the key ID and agent name are concatenated with a colon. If both are missing, falls back to <code>"unknown:unknown"</code>.</li>
+        </ol>
+        <p>The tracking ID is stored in <code>ctx.metadata._loopTrackingId</code> so the <code>after()</code> hook can retrieve it without recomputing.</p>
+      </section>
+
+      <section class="section">
+        <h2>Response Fingerprinting</h2>
+        <p>The core detection mechanism is response fingerprinting. Each LLM response is distilled into a short fingerprint that captures its <em>action pattern</em> rather than its full content:</p>
+        <ol>
+          <li><strong>Extract tool names:</strong> A regex scans the response for JSON patterns like <code>"name": "tool_name"</code> (both OpenAI and Anthropic tool_use formats). All discovered tool names are sorted alphabetically.</li>
+          <li><strong>Extract content prefix:</strong> The first 200 characters of the response are trimmed and used as a content signal.</li>
+          <li><strong>Build raw fingerprint:</strong>
+            <ul>
+              <li>If tools were found: <code>tools:toolA,toolB|first 200 chars</code></li>
+              <li>If no tools: just the first 200 characters</li>
+            </ul>
+          </li>
+          <li><strong>Hash:</strong> The raw string is SHA-256 hashed and truncated to the first 16 hex characters.</li>
+        </ol>
+        <p>This design means two responses that call the same tools in the same order with similar opening text produce identical fingerprints, even if the full content differs in details. This is intentional &mdash; loops often have minor variations in output but follow the same structural pattern.</p>
+      </section>
+
+      <section class="section">
+        <h2>Similarity Window and Threshold</h2>
+        <p>The middleware maintains a sliding window of recent fingerprints per tracking session. Detection uses two signals:</p>
+
+        <h3>Signal 1: Pure Response Similarity</h3>
+        <p>If any single fingerprint appears <code>similarityThreshold</code> or more times within the last <code>similarityWindow</code> responses, a loop is detected with reason <code>"response_similarity"</code>.</p>
+        <p>With defaults (<code>similarityThreshold: 5</code>, <code>similarityWindow: 7</code>), this means 5 out of the last 7 responses must have the same fingerprint.</p>
+
+        <h3>Signal 2: Growth + Moderate Repetition</h3>
+        <p>If the cumulative estimated token growth exceeds <code>growthTokenThreshold</code> <em>and</em> the most-repeated fingerprint accounts for more than 60% of the window, a loop is detected with reason <code>"growth_and_repetition"</code>.</p>
+        <p>This catches slower loops where the agent is growing the context rapidly with repetitive patterns, even if the strict count threshold has not been hit.</p>
+
+        <div class="callout">
+          <strong>Minimum responses:</strong> Loop detection requires at least 3 fingerprints in the session history. Fewer than 3 responses always returns <code>{ detected: false }</code>.
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Conversation Growth Tracking</h2>
+        <p>The <code>before()</code> hook calls <code>recordRequest()</code> on every request, which:</p>
+        <ol>
+          <li>Increments the session's <code>requestCount</code>.</li>
+          <li>Estimates the token count of the current messages array (using the heuristic of 4 characters per token) and adds it to the cumulative <code>tokenGrowth</code>.</li>
+        </ol>
+        <p>Token growth is cumulative across the session, not per-request. This tracks how much total context the agent has consumed over its lifetime, which is one half of Signal 2.</p>
+      </section>
+
+      <section class="section">
+        <h2>Three Modes</h2>
+        <p>When a loop is detected, the <code>mode</code> setting determines the response:</p>
+
+        <h3>Mode: <code>intervene</code> (default)</h3>
+        <p>Injects a system message at the beginning of the conversation to help the LLM break out of the loop:</p>
+        <pre><code>ctx.messages = [
+  { role: 'system', content: settings.interventionMessage },
+  ...ctx.messages,
+];</code></pre>
+        <p>The default intervention message reads:</p>
+        <blockquote>[Soul Gateway] Loop detected: your last several responses followed the same pattern. Stop the current approach and try something different.</blockquote>
+        <p>After injecting, the middleware calls <code>markIntervention()</code> to increment the session's intervention count for tracking purposes. The request continues to the LLM with the extra guidance.</p>
+
+        <h3>Mode: <code>block</code></h3>
+        <p>Aborts the request with HTTP 429 (Too Many Requests):</p>
+        <pre><code>ctx.abort = true;
+ctx.abortStatus = 429;
+ctx.abortMessage = 'Agent loop detected (response_similarity): repeated response pattern over 7 requests';</code></pre>
+        <p>This is the strictest mode. The agent receives an error and must decide how to proceed.</p>
+
+        <h3>Mode: <code>log</code></h3>
+        <p>Does nothing beyond logging. The loop is detected and logged (by the <code>checkLoop()</code> function's internal <code>log.warn()</code>), but the request proceeds normally. Useful for observability without any impact on agent behavior.</p>
+      </section>
+
+      <section class="section">
+        <h2>Post-Dispatch: Recording Fingerprints</h2>
+        <p>The <code>after()</code> hook records the response fingerprint for use in future loop detection. It runs after every successful response (including streaming), using the tracking ID stored in <code>ctx.metadata._loopTrackingId</code> during the <code>before()</code> phase.</p>
+        <p>The fingerprint array is capped to <code>similarityWindow</code> entries &mdash; older fingerprints are evicted from the front when the window is full.</p>
+      </section>
+
+      <section class="section">
+        <h2>Session Eviction</h2>
+        <p>In-memory tracking sessions are evicted by a background timer:</p>
+        <table>
+          <thead>
+            <tr><th>Parameter</th><th>Value</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Eviction interval</td>
+              <td>5 minutes</td>
+              <td>How often the cleanup timer runs.</td>
+            </tr>
+            <tr>
+              <td>Max age</td>
+              <td>30 minutes</td>
+              <td>Sessions not accessed within this window are deleted.</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>The timer is <code>unref()</code>'d so it does not prevent Node.js from exiting during graceful shutdown.</p>
+      </section>
+
+      <section class="section">
+        <h2>Settings</h2>
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Type</th><th>Default</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>enabled</code></td>
+              <td><code>boolean</code></td>
+              <td><code>true</code></td>
+              <td>Master switch. When <code>false</code>, both hooks return immediately.</td>
+            </tr>
+            <tr>
+              <td><code>mode</code></td>
+              <td><code>string</code></td>
+              <td><code>"intervene"</code></td>
+              <td>Action on detection: <code>"intervene"</code>, <code>"block"</code>, or <code>"log"</code>.</td>
+            </tr>
+            <tr>
+              <td><code>similarityThreshold</code></td>
+              <td><code>number</code></td>
+              <td><code>5</code></td>
+              <td>Number of identical fingerprints required within the window to trigger Signal 1.</td>
+            </tr>
+            <tr>
+              <td><code>similarityWindow</code></td>
+              <td><code>number</code></td>
+              <td><code>7</code></td>
+              <td>Number of most recent responses to consider for similarity analysis.</td>
+            </tr>
+            <tr>
+              <td><code>growthTokenThreshold</code></td>
+              <td><code>number</code></td>
+              <td><code>50000</code></td>
+              <td>Cumulative token growth threshold for Signal 2 (combined with 60% repetition rate).</td>
+            </tr>
+            <tr>
+              <td><code>interventionMessage</code></td>
+              <td><code>string</code></td>
+              <td><em>(see above)</em></td>
+              <td>System message injected in <code>intervene</code> mode. Customize to match your agent's expected behavior.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

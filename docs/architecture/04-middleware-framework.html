@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Middleware Framework - Soul Gateway</title>
+  <link rel="stylesheet" href="../assets/style.css" />
+  <script src="../site-nav.js"></script>
+</head>
+<body>
+  <div class="page">
+    <header class="site-header">
+      <div class="header-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"></div>
+          <div>Soul Gateway Architecture</div>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="hero">
+        <span class="tag">Part 4</span>
+        <h1>Middleware Framework</h1>
+        <p>The pluggable middleware system: file-based discovery, the before/after hook interface, context object anatomy, execution ordering, abort mechanics, and the 12 built-in middlewares.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Overview</h2>
+        <p>Soul Gateway's middleware framework allows modular processing logic to be inserted before and after the upstream LLM dispatch. Middlewares are discovered automatically from the <code>middlewares/</code> directory on startup, registered in the database, and assigned to specific models or tiers via the <code>model_middlewares</code> join table.</p>
+
+        <pre class="diagram"><code>
+  Request
+    |
+    v
+  [Pre-middlewares: tier-level, then model-level]
+    |  Can: mutate messages, abort (error or success), set metadata
+    v
+  Upstream Dispatch (retry + cooldown)
+    |
+    v
+  [Post-middlewares: tier-level, then model-level]
+    |  Can: observe response, modify content (non-streaming only), track metrics
+    v
+  Response to client
+        </code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Plugin Discovery</h2>
+        <p>The <code>scanMiddlewares()</code> function in <code>middleware-loader.mjs</code> runs during startup:</p>
+
+        <ol>
+          <li>Scans the <code>src/middlewares/</code> directory for <code>.mjs</code> files</li>
+          <li>Dynamic-imports each file with a cache-busting query parameter (<code>?t=Date.now()</code>) to force reimport on rescan</li>
+          <li>Reads the <code>default</code> export and validates the middleware interface</li>
+          <li>Caches the loaded module in memory (<code>loaded</code> Map keyed by file name)</li>
+          <li>Upserts a row in the <code>middlewares</code> database table</li>
+          <li>Marks any DB-registered middlewares whose files no longer exist on disk as <code>is_discovered = false</code></li>
+        </ol>
+
+        <h3>Validation Rules</h3>
+        <ul class="list">
+          <li><code>name</code> must be a non-empty string</li>
+          <li><code>type</code> must be <code>'pre'</code>, <code>'post'</code>, or <code>'both'</code> (defaults to <code>'both'</code>)</li>
+          <li>If type is <code>'pre'</code> or <code>'both'</code>, the module must export a <code>before()</code> function</li>
+          <li>If type is <code>'post'</code> or <code>'both'</code>, the module must export an <code>after()</code> function</li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Middleware Interface</h2>
+        <p>Each middleware module's default export must conform to this shape:</p>
+
+        <pre><code>export default {
+  // Required
+  name: 'my-middleware',
+
+  // Optional metadata
+  description: 'What this middleware does',
+  version: '1.0.0',
+  type: 'both',               // 'pre' | 'post' | 'both'
+  supportsStreaming: false,    // If true, after() runs even for streaming responses
+  defaultSettings: {           // Default config, overridable per-assignment
+    threshold: 100,
+  },
+
+  // Pre-dispatch hook (required if type is 'pre' or 'both')
+  async before(ctx, settings) {
+    // Mutate ctx.messages, set ctx.abort, populate ctx.metadata
+  },
+
+  // Post-dispatch hook (required if type is 'post' or 'both')
+  async after(ctx, settings) {
+    // Observe ctx.response, ctx.usage, modify ctx.response
+  },
+};</code></pre>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Context Object (ctx)</h2>
+        <p>The <code>ctx</code> object is created by <code>buildCtx()</code> in <code>middleware-runner.mjs</code> and flows through all middleware hooks. Here is the complete field reference:</p>
+
+        <table>
+          <thead>
+            <tr><th>Field</th><th>Type</th><th>Mutability</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr><td colspan="4"><strong>Mutable by pre-middlewares</strong></td></tr>
+            <tr><td><code>messages</code></td><td><code>Array</code></td><td>Read/Write</td><td>OpenAI-format messages array. Changes propagate to dispatch.</td></tr>
+            <tr><td><code>params</code></td><td><code>Object</code></td><td>Read/Write</td><td>LLM parameters (temperature, tools, tool_choice, etc.)</td></tr>
+            <tr><td colspan="4"><strong>Read-only request info</strong></td></tr>
+            <tr><td><code>model</code></td><td><code>string</code></td><td>Read-only</td><td>Resolved model name</td></tr>
+            <tr><td><code>tier</code></td><td><code>string|null</code></td><td>Read-only</td><td>Tier name if resolved via tier</td></tr>
+            <tr><td><code>apiKeyId</code></td><td><code>string</code></td><td>Read-only</td><td>UUID of the authenticated API key</td></tr>
+            <tr><td><code>agentName</code></td><td><code>string|null</code></td><td>Read-only</td><td>Agent name from X-Soul-Agent header</td></tr>
+            <tr><td><code>sessionId</code></td><td><code>string|null</code></td><td>Read-only</td><td>Session ID from X-Soul-Session header</td></tr>
+            <tr><td><code>isStreaming</code></td><td><code>boolean</code></td><td>Read-only</td><td>Whether <code>stream=true</code></td></tr>
+            <tr><td><code>authCtx</code></td><td><code>Object</code></td><td>Read-only</td><td>Full auth context: <code>{ api_key_id, rpm_limit, tpm_limit, key_daily_budget, soul_id }</code></td></tr>
+            <tr><td colspan="4"><strong>State flowing between before() and after()</strong></td></tr>
+            <tr><td><code>metadata</code></td><td><code>Object</code></td><td>Read/Write</td><td>Free-form metadata bag. Shared across all middlewares. Used for passing data from before() to after() and for cost data in post-middlewares.</td></tr>
+            <tr><td colspan="4"><strong>Response data (populated in post-dispatch)</strong></td></tr>
+            <tr><td><code>response</code></td><td><code>string|null</code></td><td>Read/Write</td><td>Full response content (set before post-middlewares run)</td></tr>
+            <tr><td><code>usage</code></td><td><code>Object|null</code></td><td>Read-only</td><td>Token usage: <code>{ prompt_tokens, completion_tokens, total_tokens }</code></td></tr>
+            <tr><td colspan="4"><strong>Abort control</strong></td></tr>
+            <tr><td><code>abort</code></td><td><code>boolean</code></td><td>Write</td><td>Set to <code>true</code> to abort the pipeline</td></tr>
+            <tr><td><code>abortStatus</code></td><td><code>number</code></td><td>Write</td><td>HTTP status code for the abort response (default 400)</td></tr>
+            <tr><td><code>abortMessage</code></td><td><code>string</code></td><td>Write</td><td>Error message for the abort response</td></tr>
+            <tr><td><code>abortResponse</code></td><td><code>Object|null</code></td><td>Write</td><td>When set with <code>abortStatus=200</code>, pipeline sends as a success response (cache hit)</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Execution Order</h2>
+        <p>Middlewares are loaded and merged from two levels by <code>loadMergedMiddlewares()</code>:</p>
+
+        <ol>
+          <li><strong>Tier middlewares first:</strong> If the resolved model belongs to a tier, load middlewares assigned to the tier's <code>model_config_id</code></li>
+          <li><strong>Model middlewares second:</strong> Load middlewares assigned to the specific model's <code>model_config_id</code></li>
+        </ol>
+
+        <p>Within each level, middlewares are sorted by <code>sort_order</code> (lower values run first, default 100). The final execution order is:</p>
+
+        <pre><code>Tier middlewares (sorted by sort_order)
+  then
+Model middlewares (sorted by sort_order)</code></pre>
+
+        <p>For pre-dispatch, only middlewares with <code>type = 'pre'</code> or <code>type = 'both'</code> are run. For post-dispatch, only those with <code>type = 'post'</code> or <code>type = 'both'</code>.</p>
+
+        <div class="callout">
+          <p><strong>Streaming limitation:</strong> Post-dispatch middlewares with <code>supports_streaming = false</code> are skipped for streaming responses. Since SSE chunks have already been sent to the client, non-streaming middlewares cannot modify the response. Only streaming-capable middlewares run (for observation and logging purposes).</p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Abort Mechanism</h2>
+        <p>A pre-middleware can abort the request in two ways by setting <code>ctx.abort = true</code>:</p>
+
+        <h3>Error Abort</h3>
+        <p>Set <code>ctx.abortStatus</code> to an error code (e.g., 429, 400) and <code>ctx.abortMessage</code> to an error string. The pipeline returns the error response, logs the abort, and terminates. Optional <code>ctx.metadata.retryAfter</code> sets the <code>Retry-After</code> header.</p>
+
+        <pre><code>// Example: rate limiter abort
+ctx.abort = true;
+ctx.abortStatus = 429;
+ctx.abortMessage = 'Rate limit exceeded';
+ctx.metadata.retryAfter = 60;</code></pre>
+
+        <h3>Success Abort (Cache Hit)</h3>
+        <p>Set <code>ctx.abortStatus = 200</code> and <code>ctx.abortResponse</code> to an object with <code>{ content, stopReason, usage, cacheHit, promptHash, headers }</code>. The pipeline treats this as a successful response: it sends the content to the client, calculates cost, inserts a log entry, and broadcasts -- all without dispatching to an upstream provider.</p>
+
+        <pre><code>// Example: cache middleware success abort
+ctx.abort = true;
+ctx.abortStatus = 200;
+ctx.abortResponse = {
+  content: cachedContent,
+  stopReason: 'stop',
+  usage: { prompt_tokens: 0, completion_tokens: cachedTokens, total_tokens: cachedTokens },
+  cacheHit: true,
+  promptHash: hash,
+};</code></pre>
+
+        <h3>Error Handling in Middlewares</h3>
+        <p>If a middleware's <code>before()</code> or <code>after()</code> throws an exception, the error is logged but the pipeline continues to the next middleware. Middleware errors are non-critical by design -- they should never break a request.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Settings Merging</h2>
+        <p>Each middleware has <code>defaultSettings</code> (defined in the module and stored in the <code>middlewares</code> table). When a middleware is assigned to a model/tier via <code>model_middlewares</code>, the assignment can provide override <code>settings</code>. At execution time, <code>mergeSettings()</code> performs a shallow merge:</p>
+
+        <pre><code>const effective = { ...defaultSettings, ...overrideSettings };</code></pre>
+
+        <p>Both values are parsed from JSON if stored as strings. This allows the same middleware to have different behavior per model -- for example, a rate limiter with different thresholds for different tiers.</p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section class="section">
+        <h2>Built-in Middlewares</h2>
+        <p>Soul Gateway ships with 12 middleware plugins in the <code>src/middlewares/</code> directory:</p>
+
+        <table>
+          <thead>
+            <tr><th>Middleware</th><th>Type</th><th>Description</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>rate-limiter</code></td>
+              <td><span class="tag type-pre">pre</span></td>
+              <td>Enforces per-key RPM and TPM limits using the <code>rate_limit_state</code> table. Aborts with 429 and Retry-After header.</td>
+            </tr>
+            <tr>
+              <td><code>budget-enforcer</code></td>
+              <td><span class="tag type-both">both</span></td>
+              <td>Pre: checks daily/monthly budget against aggregated call_logs spend. Post: tracks the cost of the completed request.</td>
+            </tr>
+            <tr>
+              <td><code>blacklist-scanner</code></td>
+              <td><span class="tag type-pre">pre</span></td>
+              <td>Scans prompt messages against <code>blacklist_rules</code> (exact, substring, regex matching). Aborts with 400 on match.</td>
+            </tr>
+            <tr>
+              <td><code>cache</code></td>
+              <td><span class="tag type-both">both</span></td>
+              <td>Pre: computes prompt hash and checks for a recent successful response with the same hash. Aborts with status 200 on cache hit. Post: no-op (the log insertion serves as cache storage).</td>
+            </tr>
+            <tr>
+              <td><code>loop-detector</code></td>
+              <td><span class="tag type-pre">pre</span></td>
+              <td>Detects repeated identical requests from the same API key within a short window. Aborts with 429 to prevent runaway agents.</td>
+            </tr>
+            <tr>
+              <td><code>context-compressor</code></td>
+              <td><span class="tag type-pre">pre</span></td>
+              <td>Compresses long message histories to fit within context windows by summarizing or truncating older messages.</td>
+            </tr>
+            <tr>
+              <td><code>system-prompt-injector</code></td>
+              <td><span class="tag type-pre">pre</span></td>
+              <td>Injects or modifies system prompts based on configurable templates.</td>
+            </tr>
+            <tr>
+              <td><code>session-context</code></td>
+              <td><span class="tag type-pre">pre</span></td>
+              <td>Loads recent session history and prepends it to the messages array for multi-turn context.</td>
+            </tr>
+            <tr>
+              <td><code>tpm-tracker</code></td>
+              <td><span class="tag type-post">post</span></td>
+              <td>Tracks tokens per minute for rate limiting enforcement.</td>
+            </tr>
+            <tr>
+              <td><code>request-logger</code></td>
+              <td><span class="tag type-both">both</span></td>
+              <td>Enhanced logging: logs request/response details for debugging.</td>
+            </tr>
+            <tr>
+              <td><code>response-filter</code></td>
+              <td><span class="tag type-post">post</span></td>
+              <td>Scans response content and filters or flags problematic output.</td>
+            </tr>
+            <tr>
+              <td><code>output-compressor</code></td>
+              <td><span class="tag type-post">post</span></td>
+              <td>Compresses response content for storage efficiency in logs.</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+    </main>
+  </div>
+</body>
+</html>
