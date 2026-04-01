@@ -205,6 +205,19 @@ jobs:
             ploinky expose GEMINI_API_KEY "$GEMINI_SEARCH_API_KEY" soul-gateway
           fi
 
+          # Update achillesAgentLib in ploinky's node_modules (syncCoreDependencies copies from here)
+          PLOINKY_BIN=$(which ploinky 2>/dev/null || echo "")
+          if [ -n "$PLOINKY_BIN" ]; then
+            PLOINKY_DIR=$(cd "$(dirname "$PLOINKY_BIN")/.." && pwd)
+            AGENTLIB_DIR="$PLOINKY_DIR/node_modules/achillesAgentLib"
+            if [ -d "$AGENTLIB_DIR/.git" ]; then
+              echo "Updating achillesAgentLib in ploinky..."
+              cd "$AGENTLIB_DIR" && git fetch origin master && git reset --hard origin/master
+              echo "achillesAgentLib updated to $(git rev-parse --short HEAD)"
+              cd "$WORKSPACE"
+            fi
+          fi
+
           # Stop and clean existing
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "soul-gateway.*soulGateway"; then
             echo "Stopping existing soul-gateway..."
