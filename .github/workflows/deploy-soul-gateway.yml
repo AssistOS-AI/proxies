@@ -161,7 +161,8 @@ jobs:
           fi
 
           # Update ploinky (entrypoint scripts, dependency installer, etc.)
-          PLOINKY_DIR=$(cd "$(dirname "$(which ploinky 2>/dev/null)")/.." 2>/dev/null && pwd) || true
+          PLOINKY_BIN=$(readlink -f "$(which ploinky 2>/dev/null)" 2>/dev/null) || true
+          PLOINKY_DIR=$(cd "$(dirname "$PLOINKY_BIN")/.." 2>/dev/null && pwd) || true
           if [ -n "$PLOINKY_DIR" ] && [ -d "$PLOINKY_DIR" ]; then
             if [ -d "$PLOINKY_DIR/.git" ]; then
               echo "Pulling latest ploinky..."
