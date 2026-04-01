@@ -162,9 +162,21 @@ jobs:
 
           # Update ploinky (entrypoint scripts, dependency installer, etc.)
           PLOINKY_DIR=$(cd "$(dirname "$(which ploinky 2>/dev/null)")/.." 2>/dev/null && pwd) || true
-          if [ -d "$PLOINKY_DIR/.git" ]; then
-            echo "Pulling latest ploinky..."
-            cd "$PLOINKY_DIR" && git fetch origin master && git reset --hard origin/master 2>&1 | tail -1
+          if [ -n "$PLOINKY_DIR" ] && [ -d "$PLOINKY_DIR" ]; then
+            if [ -d "$PLOINKY_DIR/.git" ]; then
+              echo "Pulling latest ploinky..."
+              cd "$PLOINKY_DIR" && git fetch origin master && git reset --hard origin/master 2>&1 | tail -1
+            else
+              # Convert to git clone (preserves node_modules, replaces code)
+              echo "Converting ploinky to git repo..."
+              PLOINKY_TMP="/tmp/ploinky-clone"
+              rm -rf "$PLOINKY_TMP"
+              git clone --depth 1 https://github.com/OutfinityResearch/ploinky.git "$PLOINKY_TMP" 2>&1 | tail -1
+              # Preserve node_modules, replace everything else
+              rsync -a --delete --exclude 'node_modules' --exclude 'package-lock.json' "$PLOINKY_TMP/" "$PLOINKY_DIR/"
+              rm -rf "$PLOINKY_TMP"
+              echo "ploinky updated"
+            fi
           fi
 
           # Create workspace
