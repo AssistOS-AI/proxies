@@ -213,29 +213,10 @@ jobs:
           fi
 
           # Start soul-gateway (starts postgres too)
+          # ploinky's syncCoreDependencies now auto-pulls latest achillesAgentLib
           mkdir -p "$WORKSPACE/logs"
           echo "Starting soul-gateway..."
           ploinky start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
-
-          # Sync latest achillesAgentLib into all workspace node_modules
-          # ploinky's syncCoreDependencies copies from its own (potentially stale)
-          # node_modules. Overwrite with latest from GitHub, then restart the container.
-          AGENTLIB_LATEST="/tmp/achillesAgentLib-latest"
-          rm -rf "$AGENTLIB_LATEST"
-          git clone --depth 1 https://github.com/OutfinityResearch/AchillesAgentLib.git "$AGENTLIB_LATEST" 2>&1 | tail -1
-          echo "achillesAgentLib: $(cd "$AGENTLIB_LATEST" && git rev-parse --short HEAD)"
-          find "$WORKSPACE/.ploinky" -path '*/node_modules/achillesAgentLib' -type d 2>/dev/null | while read target; do
-            rsync -a --delete --exclude '.git' "$AGENTLIB_LATEST/" "$target/"
-            echo "  synced -> $target"
-          done
-          rm -rf "$AGENTLIB_LATEST"
-
-          # Restart the container directly (not via ploinky, which would re-sync stale deps)
-          SG_CONTAINER=$(podman ps -a --filter "name=soul-gateway.*soulGateway" --format "{{.Names}}" 2>/dev/null | head -1)
-          if [ -n "$SG_CONTAINER" ]; then
-            echo "Restarting container $SG_CONTAINER with updated achillesAgentLib..."
-            podman restart "$SG_CONTAINER" 2>&1 || true
-          fi
 
           # Wait for postgres to be ready, then patch pg_hba.conf to trust all connections
           # This permanently prevents password mismatch issues across container recreations
