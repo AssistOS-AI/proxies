@@ -160,6 +160,13 @@ jobs:
             git clone "$BASIC_REPO" "$CODE_DIR/basic"
           fi
 
+          # Update ploinky + its achillesAgentLib
+          PLOINKY_DIR=$(cd "$(dirname "$(which ploinky 2>/dev/null)")/.." 2>/dev/null && pwd) || true
+          if [ -d "$PLOINKY_DIR/.git" ]; then
+            echo "Pulling latest ploinky..."
+            cd "$PLOINKY_DIR" && git fetch origin master && git reset --hard origin/master 2>&1 | tail -1
+          fi
+
           # Create workspace
           mkdir -p "$WORKSPACE"
           cd "$WORKSPACE"
