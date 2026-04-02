@@ -49,7 +49,7 @@ Unified table for both individual models and tiers. The `type` column distinguis
 | Column | Type | Default | Constraints | Description |
 |--------|------|---------|-------------|-------------|
 | id | UUID | gen_random_uuid() | PRIMARY KEY | Unique ID |
-| name | TEXT | | UNIQUE NOT NULL | Model identifier (e.g., `axl/copilot/gpt-4o`) |
+| name | TEXT | | UNIQUE NOT NULL | Model identifier (e.g., `copilot/gpt-4o`) |
 | display_name | TEXT | | | Human-friendly name |
 | type | TEXT | 'model' | NOT NULL, CHECK (type IN ('model', 'tier')) | Entry type |
 | upstream_model | TEXT | | | Legacy: upstream model name (nullable) |
@@ -57,7 +57,7 @@ Unified table for both individual models and tiers. The `type` column distinguis
 | provider_model | TEXT | | | Model name as sent to the upstream provider |
 | provider_config_id | UUID | | FK to provider_configs(id), SET NULL on delete | Provider foreign key |
 | upstream_source | TEXT | | | Source classification (e.g., `openai`, `anthropic`, `google`) |
-| mode | TEXT | 'deep' | | Routing mode hint |
+| mode | TEXT | 'axl/deep' | | Routing mode hint |
 | input_price | NUMERIC | 0 | | Price per 1M input tokens (USD) |
 | output_price | NUMERIC | 0 | | Price per 1M output tokens (USD) |
 | pricing_type | TEXT | 'token' | | `'token'` or `'request'` |
