@@ -1,7 +1,0 @@
-{
-  "name": "kiro-gateway",
-  "version": "1.0.0",
-  "type": "module",
-  "description": "OpenAI-compatible proxy for Claude models via Kiro with Google OAuth",
-  "main": "server.mjs"
-}
