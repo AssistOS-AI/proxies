@@ -3,3 +3,7 @@
 /.ploinky/
 /logs/
 
+# >>> ploinky default-skills >>>
+.claude/skills/
+.agents/skills/
+# <<< ploinky default-skills <<<
