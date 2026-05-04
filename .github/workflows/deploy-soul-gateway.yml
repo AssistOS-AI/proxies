@@ -103,6 +103,7 @@ jobs:
           DEFAULT_PROXY_API_KEY=${{ secrets.SG_DEFAULT_PROXY_API_KEY }}
           DASHBOARD_PASSWORD=${{ secrets.SG_DASHBOARD_PASSWORD }}
           OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          PLOINKY_MASTER_KEY=${{ secrets.PLOINKY_MASTER_KEY }}
           ENVEOF
 
       - name: Deploy - SCP secrets to remote
