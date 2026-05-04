@@ -2,6 +2,7 @@
 /.idea/
 /.ploinky/
 /logs/
+node_modules/
 
 # >>> ploinky default-skills >>>
 .claude/skills/
