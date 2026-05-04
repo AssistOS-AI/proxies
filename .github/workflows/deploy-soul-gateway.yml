@@ -49,7 +49,7 @@ jobs:
 
           echo ""
           echo "=== Soul Gateway Health Check ==="
-          curl -s http://localhost:8042/health 2>/dev/null || echo "Soul Gateway not reachable on port 8042"
+          curl -s http://localhost:8042/healthz 2>/dev/null || echo "Soul Gateway not reachable on port 8042"
 
           echo ""
           echo "=== Container Logs (last 20 lines) ==="
@@ -91,7 +91,7 @@ jobs:
           echo "=== Post-restart Status ==="
           ploinky status
           echo ""
-          curl -s http://localhost:8042/health 2>/dev/null || echo "Soul Gateway not reachable yet"
+          curl -s http://localhost:8042/healthz 2>/dev/null || echo "Soul Gateway not reachable yet"
           EOF
 
       # ─── DEPLOY ─────────────────────────────────────────────────
@@ -245,10 +245,10 @@ jobs:
           echo "Waiting for startup..."
           for i in $(seq 1 30); do
             sleep 2
-            if curl -sf http://localhost:8042/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:8042/healthz > /dev/null 2>&1; then
               echo ""
               echo "Soul Gateway is healthy!"
-              curl -s http://localhost:8042/health
+              curl -s http://localhost:8042/healthz
               echo ""
 
               echo ""
