@@ -195,7 +195,7 @@ jobs:
           ploinky var PGPORT "5432"
           ploinky var PGUSER "postgres"
           ploinky var PGPASSWORD "$PGPASSWORD"
-          ploinky var PGDATABASE "postgres"
+          ploinky var PGDATABASE "soul_gateway_v2"
           ploinky var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
           if [ -n "$OPENROUTER_API_KEY" ]; then
             ploinky var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
