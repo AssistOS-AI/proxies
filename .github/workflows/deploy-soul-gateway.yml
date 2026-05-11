@@ -239,6 +239,15 @@ jobs:
             "$PLOINKY" clean soul-gateway 2>&1 || true
           fi
 
+          OLD_POSTGRES_DATA="$WORKSPACE/postgres/data"
+          NEW_POSTGRES_DATA="$WORKSPACE/.ploinky/data/postgres/data"
+          if sudo -n test -f "$OLD_POSTGRES_DATA/pgdata/PG_VERSION" 2>/dev/null \
+            && ! sudo -n test -f "$NEW_POSTGRES_DATA/pgdata/PG_VERSION" 2>/dev/null; then
+            echo "Migrating existing Postgres data from $OLD_POSTGRES_DATA to $NEW_POSTGRES_DATA..."
+            sudo mkdir -p "$NEW_POSTGRES_DATA"
+            sudo rsync -aH --numeric-ids "$OLD_POSTGRES_DATA/" "$NEW_POSTGRES_DATA/"
+          fi
+
           # Start soul-gateway (starts postgres too)
           mkdir -p "$WORKSPACE/logs"
           echo "Starting soul-gateway..."
