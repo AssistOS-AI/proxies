@@ -96,7 +96,7 @@ jobs:
 
       # ─── DEPLOY ─────────────────────────────────────────────────
       - name: Deploy - Write secrets env file
-        if: inputs.action == 'deploy' || github.event_name == 'push'
+        if: inputs.action == 'deploy'
         run: |
           cat > /tmp/soul_env << ENVEOF
           PGPASSWORD=${{ secrets.SG_PGPASSWORD }}
@@ -107,14 +107,14 @@ jobs:
           ENVEOF
 
       - name: Deploy - SCP secrets to remote
-        if: inputs.action == 'deploy' || github.event_name == 'push'
+        if: inputs.action == 'deploy'
         run: |
           scp -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             /tmp/soul_env \
             ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }}:/tmp/soul_env
 
       - name: Deploy - Run remote setup
-        if: inputs.action == 'deploy' || github.event_name == 'push'
+        if: inputs.action == 'deploy'
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
             ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} bash -s << 'DEPLOY_SCRIPT'
