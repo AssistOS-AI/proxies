@@ -133,6 +133,33 @@ jobs:
           BASIC_REPO="https://github.com/PloinkyRepos/Basic.git"
           CODE_DIR="$HOME/code"
 
+          resolve_ploinky() {
+            if command -v ploinky >/dev/null 2>&1; then
+              command -v ploinky
+              return 0
+            fi
+            if [ -x "$HOME/.local/bin/ploinky" ]; then
+              printf '%s\n' "$HOME/.local/bin/ploinky"
+              return 0
+            fi
+            if [ -x "$HOME/ploinky/bin/ploinky" ]; then
+              printf '%s\n' "$HOME/ploinky/bin/ploinky"
+              return 0
+            fi
+            if [ -x "$HOME/proxy-gateway/ploinky/bin/ploinky" ]; then
+              printf '%s\n' "$HOME/proxy-gateway/ploinky/bin/ploinky"
+              return 0
+            fi
+            return 1
+          }
+
+          PLOINKY="$(resolve_ploinky)" || {
+            echo "ERROR: ploinky is not installed on the remote host."
+            exit 1
+          }
+          PLOINKY_BIN=$(readlink -f "$PLOINKY" 2>/dev/null || printf '%s\n' "$PLOINKY")
+          PLOINKY_DIR=$(cd "$(dirname "$PLOINKY_BIN")/.." 2>/dev/null && pwd) || true
+
           echo "=========================================="
           echo "  Soul Gateway - Deploy"
           echo "=========================================="
@@ -156,26 +183,6 @@ jobs:
             git clone "$BASIC_REPO" "$CODE_DIR/basic"
           fi
 
-          # Update ploinky (entrypoint scripts, dependency installer, etc.)
-          PLOINKY_BIN=$(readlink -f "$(which ploinky 2>/dev/null)" 2>/dev/null) || true
-          PLOINKY_DIR=$(cd "$(dirname "$PLOINKY_BIN")/.." 2>/dev/null && pwd) || true
-          if [ -n "$PLOINKY_DIR" ] && [ -d "$PLOINKY_DIR" ]; then
-            if [ -d "$PLOINKY_DIR/.git" ]; then
-              echo "Pulling latest ploinky..."
-              cd "$PLOINKY_DIR" && git fetch origin master && git reset --hard origin/master 2>&1 | tail -1
-            else
-              # Convert to git clone (preserves node_modules, replaces code)
-              echo "Converting ploinky to git repo..."
-              PLOINKY_TMP="/tmp/ploinky-clone"
-              rm -rf "$PLOINKY_TMP"
-              git clone --depth 1 https://github.com/OutfinityResearch/ploinky.git "$PLOINKY_TMP" 2>&1 | tail -1
-              # Preserve node_modules, replace everything else
-              rsync -a --delete --exclude 'node_modules' --exclude 'package-lock.json' "$PLOINKY_TMP/" "$PLOINKY_DIR/"
-              rm -rf "$PLOINKY_TMP"
-              echo "ploinky updated"
-            fi
-          fi
-
           # Create workspace
           mkdir -p "$WORKSPACE"
           cd "$WORKSPACE"
@@ -189,34 +196,52 @@ jobs:
             echo '["basic","proxies"]' > "$WORKSPACE/.ploinky/enabled_repos.json"
           fi
 
+          echo "Updating Ploinky, installed repos, and achillesAgentLib..."
+          if ! env PLOINKY_MASTER_KEY="$PLOINKY_MASTER_KEY" "$PLOINKY" update; then
+            echo "Initial ploinky update failed; retrying once in case Ploinky self-updated during this run..."
+            if ! env PLOINKY_MASTER_KEY="$PLOINKY_MASTER_KEY" "$PLOINKY" update; then
+              echo "WARNING: broad ploinky update failed. Continuing because this deploy already reset proxies/basic before starting Soul Gateway."
+            fi
+          fi
+
+          if [ -n "$PLOINKY_DIR" ] && [ -f "$PLOINKY_DIR/package.json" ]; then
+            npm install --ignore-scripts --prefix "$PLOINKY_DIR"
+            ACHILLES_DIR="$PLOINKY_DIR/node_modules/achillesAgentLib"
+            if [ -d "$ACHILLES_DIR/.git" ]; then
+              git -C "$ACHILLES_DIR" pull --rebase --autostash
+            else
+              rm -rf "$ACHILLES_DIR"
+              git clone https://github.com/OutfinityResearch/achillesAgentLib.git "$ACHILLES_DIR"
+            fi
+          fi
+
           # Configure env vars
           echo "Configuring env vars..."
-          ploinky var PGHOST "10.0.2.2"  # slirp4netns gateway → host loopback
-          ploinky var PGPORT "5432"
-          ploinky var PGUSER "postgres"
-          ploinky var PGPASSWORD "$PGPASSWORD"
-          ploinky var PGDATABASE "soul_gateway_v2"
-          ploinky var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
+          "$PLOINKY" var PGHOST "10.0.2.2"  # slirp4netns gateway → host loopback
+          "$PLOINKY" var PGPORT "5432"
+          "$PLOINKY" var PGUSER "postgres"
+          "$PLOINKY" var PGPASSWORD "$PGPASSWORD"
+          "$PLOINKY" var PGDATABASE "soul_gateway_v2"
+          "$PLOINKY" var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
           if [ -n "$OPENROUTER_API_KEY" ]; then
-            ploinky var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
+            "$PLOINKY" var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
           fi
           # DASHBOARD_PASSWORD must be a global var (ploinky var) because .secrets
           # takes precedence over ploinky expose, and containers inherit from .secrets
           if [ -n "$DASHBOARD_PASSWORD" ]; then
-            ploinky var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
+            "$PLOINKY" var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
           fi
           # Stop and clean existing
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "soul-gateway.*soulGateway"; then
             echo "Stopping existing soul-gateway..."
-            ploinky stop soul-gateway 2>&1 || true
-            ploinky clean soul-gateway 2>&1 || true
+            "$PLOINKY" stop soul-gateway 2>&1 || true
+            "$PLOINKY" clean soul-gateway 2>&1 || true
           fi
 
           # Start soul-gateway (starts postgres too)
-          # ploinky's syncCoreDependencies now auto-pulls latest achillesAgentLib
           mkdir -p "$WORKSPACE/logs"
           echo "Starting soul-gateway..."
-          ploinky start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
+          "$PLOINKY" start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
 
           # Wait for postgres to be ready, then patch pg_hba.conf to trust all connections
           # This permanently prevents password mismatch issues across container recreations
@@ -255,7 +280,7 @@ jobs:
               echo "=========================================="
               echo "  Deployment Success"
               echo "=========================================="
-              ploinky status
+              "$PLOINKY" status
               exit 0
             fi
             echo "  Attempt $i/30..."
