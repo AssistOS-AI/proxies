@@ -132,6 +132,7 @@ jobs:
           PROXIES_REPO="https://github.com/PloinkyRepos/proxies.git"
           BASIC_REPO="https://github.com/PloinkyRepos/Basic.git"
           CODE_DIR="$HOME/code"
+          SOUL_DATABASE="soul_gateway_v2"
 
           resolve_ploinky() {
             if command -v ploinky >/dev/null 2>&1; then
@@ -221,7 +222,7 @@ jobs:
           "$PLOINKY" var PGPORT "5432"
           "$PLOINKY" var PGUSER "postgres"
           "$PLOINKY" var PGPASSWORD "$PGPASSWORD"
-          "$PLOINKY" var PGDATABASE "soul_gateway_v2"
+          "$PLOINKY" var PGDATABASE "$SOUL_DATABASE"
           "$PLOINKY" var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
           if [ -n "$OPENROUTER_API_KEY" ]; then
             "$PLOINKY" var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
@@ -263,12 +264,25 @@ jobs:
             podman exec "$PG_CONTAINER" psql -U postgres -c "SELECT pg_reload_conf();" >/dev/null 2>&1 || true
             # Set the postgres password to match the secret (handles existing data dirs)
             podman exec "$PG_CONTAINER" psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" >/dev/null 2>&1 || true
+            if [ "$(podman exec "$PG_CONTAINER" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$SOUL_DATABASE'" | tr -d '[:space:]')" != "1" ]; then
+              podman exec "$PG_CONTAINER" createdb -U postgres "$SOUL_DATABASE"
+              echo "Created database $SOUL_DATABASE."
+            fi
             echo "Postgres auth secured with scram-sha-256."
+          fi
+
+          SOUL_CONTAINER=$(podman ps -a --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -n "$SOUL_CONTAINER" ]; then
+            SOUL_STATUS=$(podman inspect "$SOUL_CONTAINER" --format "{{.State.Status}}" 2>/dev/null || true)
+            if [ "$SOUL_STATUS" != "running" ]; then
+              echo "Starting soul-gateway container after database setup..."
+              podman start "$SOUL_CONTAINER" >/dev/null 2>&1 || true
+            fi
           fi
 
           # Health check
           echo "Waiting for startup..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 150); do
             sleep 2
             if curl -sf http://localhost:8042/healthz > /dev/null 2>&1; then
               echo ""
@@ -283,7 +297,7 @@ jobs:
               "$PLOINKY" status
               exit 0
             fi
-            echo "  Attempt $i/30..."
+            echo "  Attempt $i/150..."
           done
 
           echo "ERROR: Soul Gateway failed to start"
