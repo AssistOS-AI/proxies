@@ -11,6 +11,8 @@ For Soul Gateway work, read:
 - [soul-gateway/docs/specs/DS003-middleware-framework.md](soul-gateway/docs/specs/DS003-middleware-framework.md)
 - [soul-gateway/docs/specs/DS013-configuration-deployment.md](soul-gateway/docs/specs/DS013-configuration-deployment.md)
 
+Soul Gateway runs in two modes: **standalone** (production at `soul.axiologic.dev`) and **embedded** (auto-started as a dependency of Explorer). See `soul-gateway/docs/specs/DS016-embedded-mode.md` for the embedded contract and `soul-gateway/docs/specs/DS013-configuration-deployment.md` for profile details.
+
 Key invariant:
 
 - Request-time LLM inference must go through `/Users/danielsava/work/file-parser/ploinky/node_modules/achillesAgentLib`. Soul Gateway lifecycle probes and model discovery may use direct vendor HTTP when validating providers or syncing catalogs. Search providers are normal OpenAI-compatible models exposed by Soul Gateway; external callers reach them through `achillesAgentLib` the same way they reach LLM models. Soul Gateway search backends own provider-specific execution for both API search and headless-browser search behind the standard model interface.
