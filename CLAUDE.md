@@ -11,7 +11,7 @@ For Soul Gateway work, read:
 - [soul-gateway/docs/specs/DS003-middleware-framework.md](soul-gateway/docs/specs/DS003-middleware-framework.md)
 - [soul-gateway/docs/specs/DS013-configuration-deployment.md](soul-gateway/docs/specs/DS013-configuration-deployment.md)
 
-Soul Gateway runs in two modes: **standalone** (production at `soul.axiologic.dev`) and **embedded** (auto-started as a dependency of Explorer). See `soul-gateway/docs/specs/DS016-embedded-mode.md` for the embedded contract and `soul-gateway/docs/specs/DS013-configuration-deployment.md` for profile details.
+Soul Gateway runs as a Ploinky-managed agent with HTTP services in every host context. Public API traffic goes through the Ploinky router and still uses Soul Gateway API keys; management traffic is protected by Ploinky login and protected-service identity. See `soul-gateway/docs/specs/DS016-ploinky-agent-mode.md` and `soul-gateway/docs/specs/DS013-configuration-deployment.md` for details.
 
 Key invariant:
 
@@ -27,7 +27,7 @@ Code conventions:
 Production Soul Gateway:
 
 - Public URL: `https://soul.axiologic.dev`
-- Health check: `https://soul.axiologic.dev/healthz`
+- Health check: `https://soul.axiologic.dev/public-services/soul-gateway-health/`
 - Remote SSH target: `admin@45.136.70.141`
 - SSH key: `~/proxies_server_private_key.pem`
 - Remote workspace: `~/soulGateway`

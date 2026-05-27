@@ -49,7 +49,8 @@ jobs:
 
           echo ""
           echo "=== Soul Gateway Health Check ==="
-          curl -s http://localhost:8042/healthz 2>/dev/null || echo "Soul Gateway not reachable on port 8042"
+          ROUTER_URL="${PLOINKY_ROUTER_URL:-http://localhost:${ROUTER_PORT:-8080}}"
+          curl -s "${ROUTER_URL%/}/public-services/soul-gateway-health/" 2>/dev/null || echo "Soul Gateway public health service not reachable through Ploinky router"
 
           echo ""
           echo "=== Container Logs (last 20 lines) ==="
@@ -91,7 +92,8 @@ jobs:
           echo "=== Post-restart Status ==="
           ploinky status
           echo ""
-          curl -s http://localhost:8042/healthz 2>/dev/null || echo "Soul Gateway not reachable yet"
+          ROUTER_URL="${PLOINKY_ROUTER_URL:-http://localhost:${ROUTER_PORT:-8080}}"
+          curl -s "${ROUTER_URL%/}/public-services/soul-gateway-health/" 2>/dev/null || echo "Soul Gateway public health service not reachable yet"
           EOF
 
       # ─── DEPLOY ─────────────────────────────────────────────────
@@ -101,7 +103,8 @@ jobs:
           cat > /tmp/soul_env << ENVEOF
           PGPASSWORD=${{ secrets.SG_PGPASSWORD }}
           DEFAULT_PROXY_API_KEY=${{ secrets.SG_DEFAULT_PROXY_API_KEY }}
-          DASHBOARD_PASSWORD=${{ secrets.SG_DASHBOARD_PASSWORD }}
+          PLOINKY_ADMIN_USER=${{ vars.SG_PLOINKY_ADMIN_USER }}
+          PLOINKY_ADMIN_PASSWORD=${{ secrets.SG_PLOINKY_ADMIN_PASSWORD }}
           OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
           PLOINKY_MASTER_KEY=${{ secrets.PLOINKY_MASTER_KEY }}
           ENVEOF
@@ -133,6 +136,14 @@ jobs:
           BASIC_REPO="https://github.com/PloinkyRepos/Basic.git"
           CODE_DIR="$HOME/code"
           SOUL_DATABASE="soul_gateway_v2"
+          ROUTER_URL="${PLOINKY_ROUTER_URL:-http://localhost:${ROUTER_PORT:-8080}}"
+          HEALTH_URL="${ROUTER_URL%/}/public-services/soul-gateway-health/"
+          PLOINKY_ADMIN_USER="${PLOINKY_ADMIN_USER:-admin}"
+
+          if [ -z "$PLOINKY_ADMIN_PASSWORD" ]; then
+            echo "ERROR: SG_PLOINKY_ADMIN_PASSWORD is required for Ploinky local-auth admin login."
+            exit 1
+          fi
 
           resolve_ploinky() {
             if command -v ploinky >/dev/null 2>&1; then
@@ -227,17 +238,20 @@ jobs:
           if [ -n "$OPENROUTER_API_KEY" ]; then
             "$PLOINKY" var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
           fi
-          # DASHBOARD_PASSWORD must be a global var (ploinky var) because .secrets
-          # takes precedence over ploinky expose, and containers inherit from .secrets
-          if [ -n "$DASHBOARD_PASSWORD" ]; then
-            "$PLOINKY" var DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD"
-          fi
           # Stop and clean existing
           if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "soul-gateway.*soulGateway"; then
             echo "Stopping existing soul-gateway..."
             "$PLOINKY" stop soul-gateway 2>&1 || true
             "$PLOINKY" clean soul-gateway 2>&1 || true
           fi
+
+          echo "Ensuring soul-gateway uses Ploinky local auth..."
+          "$PLOINKY" disable soul-gateway 2>&1 || true
+          "$PLOINKY" enable agent proxies/soul-gateway \
+            --auth pwd \
+            --user "$PLOINKY_ADMIN_USER" \
+            --password "$PLOINKY_ADMIN_PASSWORD" \
+            as soul-gateway
 
           OLD_POSTGRES_DATA="$WORKSPACE/postgres/data"
           NEW_POSTGRES_DATA="$WORKSPACE/.ploinky/data/postgres/data"
@@ -293,10 +307,10 @@ jobs:
           echo "Waiting for startup..."
           for i in $(seq 1 150); do
             sleep 2
-            if curl -sf http://localhost:8042/healthz > /dev/null 2>&1; then
+            if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
               echo ""
               echo "Soul Gateway is healthy!"
-              curl -s http://localhost:8042/healthz
+              curl -s "$HEALTH_URL"
               echo ""
 
               echo ""

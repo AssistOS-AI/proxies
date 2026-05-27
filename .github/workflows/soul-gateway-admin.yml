@@ -152,7 +152,8 @@ jobs:
 
           echo ""
           echo "=== Health check ==="
-          curl -s http://localhost:8042/health 2>/dev/null || echo "Not healthy yet"
+          ROUTER_URL="${PLOINKY_ROUTER_URL:-http://localhost:${ROUTER_PORT:-8080}}"
+          curl -s "${ROUTER_URL%/}/public-services/soul-gateway-health/" 2>/dev/null || echo "Public health service not healthy yet"
 
           echo ""
           echo "=== Testing proxy models fetch ==="
