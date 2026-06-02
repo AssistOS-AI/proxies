@@ -190,9 +190,11 @@ jobs:
           echo ""
           ploinky vars
           echo ""
-          PG_CONTAINER=$(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1)
-          podman exec "$PG_CONTAINER" psql -U postgres -d postgres -c \
-            "SELECT name, provider_key, provider_model, is_enabled FROM soul_gateway.model_configs ORDER BY name;" 2>&1
+          CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          podman exec "$CONTAINER" sh -lc '
+            sqlite3 -header -column "${SQLITE_PATH:-/data/soul-gateway.sqlite3}" \
+              "SELECT model_key, provider_model_id, enabled FROM models ORDER BY model_key;"
+          ' 2>&1
           EOF
 
       - name: Cleanup

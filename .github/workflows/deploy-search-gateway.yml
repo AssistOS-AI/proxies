@@ -78,7 +78,6 @@ jobs:
         if: inputs.action == 'deploy'
         run: |
           cat > /tmp/search_env << ENVEOF
-          PGPASSWORD=${{ secrets.SG_PGPASSWORD }}
           DASHBOARD_PASSWORD=${{ secrets.SG_DASHBOARD_PASSWORD }}
           SOUL_GATEWAY_API_KEY=${{ secrets.SEARCH_GATEWAY_API_KEY }}
           ENVEOF
@@ -128,15 +127,8 @@ jobs:
           mkdir -p "$WORKSPACE/.ploinky/repos"
           ln -sfn "$CODE_DIR/proxies" "$WORKSPACE/.ploinky/repos/proxies"
 
-          # Configure shared env vars (safe for all agents)
+          # Configure per-agent env vars.
           echo "Configuring env vars..."
-          ploinky var PGHOST "10.0.2.2"
-          ploinky var PGPORT "5432"
-          ploinky var PGUSER "postgres"
-          ploinky var PGPASSWORD "$PGPASSWORD"
-          ploinky var PGDATABASE "postgres"
-
-          # Per-agent env vars (use expose, not var, to avoid cross-agent conflicts)
           ploinky expose PORT 8043 search-gateway
           [ -n "$DASHBOARD_PASSWORD" ] && ploinky expose DASHBOARD_PASSWORD "$DASHBOARD_PASSWORD" search-gateway
           [ -n "$SOUL_GATEWAY_API_KEY" ] && ploinky expose SOUL_GATEWAY_API_KEY "$SOUL_GATEWAY_API_KEY" search-gateway
@@ -148,7 +140,7 @@ jobs:
             ploinky clean search-gateway 2>&1 || true
           fi
 
-          # Start search-gateway (postgres should already be running from soul-gateway)
+          # Start search-gateway.
           mkdir -p "$WORKSPACE/logs"
           echo "Starting search-gateway..."
           ploinky start search-gateway > "$WORKSPACE/logs/search-gateway-deploy.log" 2>&1

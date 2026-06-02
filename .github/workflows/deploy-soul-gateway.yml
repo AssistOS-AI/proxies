@@ -62,8 +62,13 @@ jobs:
           fi
 
           echo ""
-          echo "=== Postgres Container ==="
-          podman ps --filter "name=postgres" --format "table {{.Names}}\t{{.Status}}" 2>/dev/null || echo "No postgres container found"
+          echo "=== Soul Gateway SQLite ==="
+          CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+          if [ -n "$CONTAINER" ]; then
+            podman exec "$CONTAINER" sh -lc 'echo "SQLITE_PATH=${SQLITE_PATH:-/data/soul-gateway.sqlite3}"; sqlite3 "${SQLITE_PATH:-/data/soul-gateway.sqlite3}" "SELECT count(*) AS api_keys FROM api_keys;"' 2>/dev/null || echo "SQLite not queryable yet"
+          else
+            echo "No soul-gateway container found"
+          fi
           EOF
 
       # ─── STOP ───────────────────────────────────────────────────
@@ -101,7 +106,6 @@ jobs:
         if: inputs.action == 'deploy'
         run: |
           cat > /tmp/soul_env << ENVEOF
-          PGPASSWORD=${{ secrets.SG_PGPASSWORD }}
           DEFAULT_PROXY_API_KEY=${{ secrets.SG_DEFAULT_PROXY_API_KEY }}
           PLOINKY_ADMIN_USER=${{ vars.SG_PLOINKY_ADMIN_USER }}
           PLOINKY_ADMIN_PASSWORD=${{ secrets.SG_PLOINKY_ADMIN_PASSWORD }}
@@ -135,7 +139,6 @@ jobs:
           PROXIES_REPO="https://github.com/PloinkyRepos/proxies.git"
           BASIC_REPO="https://github.com/PloinkyRepos/Basic.git"
           CODE_DIR="$HOME/code"
-          SOUL_DATABASE="soul_gateway_v2"
           ROUTER_URL="${PLOINKY_ROUTER_URL:-http://localhost:${ROUTER_PORT:-8080}}"
           HEALTH_URL="${ROUTER_URL%/}/public-services/soul-gateway-health/"
           PLOINKY_ADMIN_USER="${PLOINKY_ADMIN_USER:-admin}"
@@ -229,11 +232,6 @@ jobs:
 
           # Configure env vars
           echo "Configuring env vars..."
-          "$PLOINKY" var PGHOST "10.0.2.2"  # slirp4netns gateway → host loopback
-          "$PLOINKY" var PGPORT "5432"
-          "$PLOINKY" var PGUSER "postgres"
-          "$PLOINKY" var PGPASSWORD "$PGPASSWORD"
-          "$PLOINKY" var PGDATABASE "$SOUL_DATABASE"
           "$PLOINKY" var DEFAULT_PROXY_API_KEY "$DEFAULT_PROXY_API_KEY"
           if [ -n "$OPENROUTER_API_KEY" ]; then
             "$PLOINKY" var OPENROUTER_API_KEY "$OPENROUTER_API_KEY"
@@ -253,55 +251,10 @@ jobs:
             --password "$PLOINKY_ADMIN_PASSWORD" \
             as soul-gateway
 
-          OLD_POSTGRES_DATA="$WORKSPACE/postgres/data"
-          NEW_POSTGRES_DATA="$WORKSPACE/.ploinky/data/postgres/data"
-          if sudo -n test -f "$OLD_POSTGRES_DATA/pgdata/PG_VERSION" 2>/dev/null \
-            && ! sudo -n test -f "$NEW_POSTGRES_DATA/pgdata/PG_VERSION" 2>/dev/null; then
-            echo "Migrating existing Postgres data from $OLD_POSTGRES_DATA to $NEW_POSTGRES_DATA..."
-            sudo mkdir -p "$NEW_POSTGRES_DATA"
-            sudo rsync -aH --numeric-ids "$OLD_POSTGRES_DATA/" "$NEW_POSTGRES_DATA/"
-          fi
-
-          # Start soul-gateway (starts postgres too)
+          # Start soul-gateway (embedded SQLite opens inside the container)
           mkdir -p "$WORKSPACE/logs"
           echo "Starting soul-gateway..."
           "$PLOINKY" start soul-gateway > "$WORKSPACE/logs/deploy.log" 2>&1
-
-          # Wait for postgres to be ready, then patch pg_hba.conf to trust all connections
-          # This permanently prevents password mismatch issues across container recreations
-          echo "Waiting for postgres..."
-          PG_CONTAINER=""
-          for i in $(seq 1 20); do
-            PG_CONTAINER=$(podman ps --filter "name=postgres" --format "{{.Names}}" 2>/dev/null | head -1)
-            if [ -n "$PG_CONTAINER" ] && podman exec "$PG_CONTAINER" psql -U postgres -c "SELECT 1" >/dev/null 2>&1; then
-              echo "Postgres is ready."
-              break
-            fi
-            sleep 1
-          done
-
-          if [ -n "$PG_CONTAINER" ]; then
-            # Ensure pg_hba.conf uses scram-sha-256 (undo any previous trust patch)
-            podman exec "$PG_CONTAINER" sed -i 's/host all all all trust/host all all all scram-sha-256/' \
-              /var/lib/postgresql/data/pgdata/pg_hba.conf 2>/dev/null || true
-            podman exec "$PG_CONTAINER" psql -U postgres -c "SELECT pg_reload_conf();" >/dev/null 2>&1 || true
-            # Set the postgres password to match the secret (handles existing data dirs)
-            podman exec "$PG_CONTAINER" psql -U postgres -c "ALTER USER postgres PASSWORD '$PGPASSWORD';" >/dev/null 2>&1 || true
-            if [ "$(podman exec "$PG_CONTAINER" psql -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$SOUL_DATABASE'" | tr -d '[:space:]')" != "1" ]; then
-              podman exec "$PG_CONTAINER" createdb -U postgres "$SOUL_DATABASE"
-              echo "Created database $SOUL_DATABASE."
-            fi
-            echo "Postgres auth secured with scram-sha-256."
-          fi
-
-          SOUL_CONTAINER=$(podman ps -a --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
-          if [ -n "$SOUL_CONTAINER" ]; then
-            SOUL_STATUS=$(podman inspect "$SOUL_CONTAINER" --format "{{.State.Status}}" 2>/dev/null || true)
-            if [ "$SOUL_STATUS" != "running" ]; then
-              echo "Starting soul-gateway container after database setup..."
-              podman start "$SOUL_CONTAINER" >/dev/null 2>&1 || true
-            fi
-          fi
 
           # Health check
           echo "Waiting for startup..."
@@ -310,8 +263,22 @@ jobs:
             if curl -sf "$HEALTH_URL" > /dev/null 2>&1; then
               echo ""
               echo "Soul Gateway is healthy!"
-              curl -s "$HEALTH_URL"
+              HEALTH_BODY=$(curl -s "$HEALTH_URL")
+              echo "$HEALTH_BODY"
+              if ! echo "$HEALTH_BODY" | grep -Eq '"db"[[:space:]]*:[[:space:]]*true'; then
+                echo "ERROR: health endpoint did not report db=true"
+                exit 1
+              fi
               echo ""
+
+              echo ""
+              echo "=== SQLite verification ==="
+              SOUL_CONTAINER=$(podman ps --filter "name=soul-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
+              if [ -z "$SOUL_CONTAINER" ]; then
+                echo "ERROR: no soul-gateway container found"
+                exit 1
+              fi
+              podman exec "$SOUL_CONTAINER" sh -lc 'test -f "${SQLITE_PATH:-/data/soul-gateway.sqlite3}" && sqlite3 "${SQLITE_PATH:-/data/soul-gateway.sqlite3}" "SELECT name FROM sqlite_master WHERE type='\''table'\'' AND name='\''api_keys'\'';"'
 
               echo ""
               echo "=========================================="

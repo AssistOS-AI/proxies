@@ -31,6 +31,6 @@ Production Soul Gateway:
 - Remote SSH target: `admin@45.136.70.141`
 - SSH key: `~/proxies_server_private_key.pem`
 - Remote workspace: `~/soulGateway`
-- Expected production database: `soul_gateway_v2`
+- Expected production database file: `/data/soul-gateway.sqlite3` inside the Soul Gateway container (embedded SQLite)
 
 Use SSH for read-only status/debug unless the user explicitly asks for a state-changing remote operation. Prefer GitHub Actions workflows under `.github/workflows/` for deployment, restart, destroy, and admin tasks.
