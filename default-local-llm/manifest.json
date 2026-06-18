@@ -1,5 +1,5 @@
 {
-  "container": "docker.io/assistos/default-local-llm:cpu",
+  "container": "docker.io/assistos/default-local-llm:cpu-dd056371a36e5fd41abde55a214570d54259e99f",
   "agent": "bash /code/startup.sh",
   "about": "Default local LLM — Qwen2.5-1.5B-Instruct via llama.cpp llama-server",
   "endpoints": {
