@@ -18,8 +18,9 @@ trap cleanup INT TERM EXIT
 threads_arg=()
 [[ -n "${LLAMA_THREADS:-}" ]] && threads_arg=(--threads "$LLAMA_THREADS")
 
+LLAMA_LOG="${LLAMA_LOG:-/tmp/llama-server.log}"
 "$LLAMA_BIN" --model "$MODEL_PATH" --host 127.0.0.1 --port "$LLAMA_PORT" \
-    --ctx-size "$CTX" "${threads_arg[@]}" >/dev/null 2>&1 &
+    --ctx-size "$CTX" "${threads_arg[@]}" >"$LLAMA_LOG" 2>&1 &
 llama_pid="$!"
 
 echo "[default-local-llm] waiting for llama-server on 127.0.0.1:${LLAMA_PORT}..."
@@ -30,6 +31,8 @@ for _ in $(seq 1 120); do
     fi
     if ! kill -0 "$llama_pid" 2>/dev/null; then
         echo "[default-local-llm] llama-server exited during startup" >&2
+        echo "[default-local-llm] --- llama-server log tail ---" >&2
+        tail -n 40 "$LLAMA_LOG" >&2 2>/dev/null || true
         exit 1
     fi
     sleep 1
