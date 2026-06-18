@@ -10,4 +10,4 @@ AgentServer via `endpoints.chatCompletions.command`.
   `assistos/default-local-llm`.
 
 No dependency on `llm-runtime` or `local-llm-architectures`. Inherits workspace commit policy
-(no AI attribution; commit only on `soul-gateway-local-integration`).
+(no AI attribution).
