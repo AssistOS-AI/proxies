@@ -3,7 +3,7 @@
   "agent": "bash /code/startup.sh",
   "about": "Default local LLM — Qwen2.5-1.5B-Instruct via llama.cpp llama-server",
   "endpoints": {
-    "chatCompletions": { "command": "node /code/chat-completions.mjs", "supportsStream": true }
+    "chatCompletions": { "command": "node", "args": ["/code/chat-completions.mjs"], "supportsStream": true }
   },
   "health": {
     "readiness": { "script": "healthcheck.sh", "interval": 5, "timeout": 10, "failureThreshold": 60 }
