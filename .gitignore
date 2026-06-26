@@ -3,6 +3,8 @@
 /.ploinky/
 /logs/
 node_modules/
+.worktrees/
+worktrees/
 
 # >>> ploinky default-skills >>>
 .claude
