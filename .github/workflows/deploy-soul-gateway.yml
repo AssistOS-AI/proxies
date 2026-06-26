@@ -136,8 +136,8 @@ jobs:
           rm -f /tmp/soul_env
 
           WORKSPACE="$HOME/soulGateway"
-          PROXIES_REPO="https://github.com/PloinkyRepos/proxies.git"
-          BASIC_REPO="https://github.com/PloinkyRepos/Basic.git"
+          PROXIES_REPO="https://github.com/AssistOS-AI/proxies.git"
+          BASIC_REPO="https://github.com/AssistOS-AI/Basic.git"
           CODE_DIR="$HOME/code"
           ROUTER_URL="${PLOINKY_ROUTER_URL:-http://localhost:${ROUTER_PORT:-8080}}"
           HEALTH_URL="${ROUTER_URL%/}/public-services/soul-gateway-health/"
@@ -226,7 +226,7 @@ jobs:
               git -C "$ACHILLES_DIR" pull --rebase --autostash
             else
               rm -rf "$ACHILLES_DIR"
-              git clone https://github.com/OutfinityResearch/achillesAgentLib.git "$ACHILLES_DIR"
+              git clone https://github.com/AssistOS-AI/achillesAgentLib.git "$ACHILLES_DIR"
             fi
           fi
 

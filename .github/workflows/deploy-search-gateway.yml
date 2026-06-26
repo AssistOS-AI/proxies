@@ -118,7 +118,7 @@ jobs:
           else
             echo "Cloning proxies repo..."
             mkdir -p "$CODE_DIR"
-            git clone "https://github.com/PloinkyRepos/proxies.git" "$CODE_DIR/proxies"
+            git clone "https://github.com/AssistOS-AI/proxies.git" "$CODE_DIR/proxies"
           fi
 
           cd "$WORKSPACE"
