@@ -1,7 +1,7 @@
 # default-local-llm
 
 Standalone default local LLM agent. Runs llama.cpp `llama-server` (loopback) serving
-Qwen2.5-1.5B-Instruct (Q4_K_M GGUF, baked into the image) behind ploinky's shared
+Qwen2.5-Coder-1.5B-Instruct (Q4_K_M GGUF, baked into the image) behind ploinky's shared
 AgentServer via `endpoints.chatCompletions.command`.
 
 - `startup.sh` — launch llama-server, wait for `/health`, then run AgentServer.

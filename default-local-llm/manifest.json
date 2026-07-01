@@ -1,7 +1,7 @@
 {
-  "container": "docker.io/assistos/default-local-llm:cpu-23783029c96262cd2a816b4077832e90497e5ef4",
+  "container": "docker.io/assistos/default-local-llm:cpu-qwen25-coder-1.5b",
   "agent": "bash /code/startup.sh",
-  "about": "Default local LLM — Qwen2.5-1.5B-Instruct via llama.cpp llama-server",
+  "about": "Default local LLM — Qwen2.5-Coder-1.5B-Instruct via llama.cpp llama-server",
   "endpoints": {
     "chatCompletions": { "command": "node", "args": ["/code/chat-completions.mjs"], "supportsStream": true }
   },
@@ -11,7 +11,7 @@
   "profiles": {
     "default": {
       "env": {
-        "LLAMA_MODEL_PATH": { "default": "/opt/models/qwen2.5-1.5b-instruct-q4_k_m.gguf" },
+        "LLAMA_MODEL_PATH": { "default": "/opt/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf" },
         "LLAMA_SERVER_PORT": { "default": "8080" },
         "LLAMA_SERVER_BIN": { "default": "llama-server" },
         "LLAMA_CTX_SIZE": { "default": "4096" },

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MODEL_PATH="${LLAMA_MODEL_PATH:-/opt/models/qwen2.5-1.5b-instruct-q4_k_m.gguf}"
+MODEL_PATH="${LLAMA_MODEL_PATH:-/opt/models/Qwen2.5-Coder-1.5B-Instruct-Q4_K_M.gguf}"
 LLAMA_PORT="${LLAMA_SERVER_PORT:-8080}"
 LLAMA_BIN="${LLAMA_SERVER_BIN:-llama-server}"
 CTX="${LLAMA_CTX_SIZE:-4096}"
