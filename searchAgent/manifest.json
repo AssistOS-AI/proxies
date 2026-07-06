@@ -1,0 +1,56 @@
+{
+  "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
+  "agent": "sh /code/startup.sh",
+  "about": "SearchAgent exposes a simple HTTP search API with normalized provider results.",
+  "readiness": {
+    "protocol": "tcp"
+  },
+  "ideSettings": [
+    {
+      "key": "search-agent-settings",
+      "label": "SearchAgent",
+      "scope": "workspace",
+      "pluginKey": "searchAgent/search-agent-settings",
+      "settingsComponent": "search-agent-settings",
+      "adminOnly": false
+    }
+  ],
+  "httpServices": [
+    {
+      "slug": "search-agent",
+      "externalPrefix": "/services/search-agent/",
+      "internalPrefix": "/",
+      "access": "guest"
+    }
+  ],
+  "profiles": {
+    "default": {
+      "env": {
+        "TAVILY_API_KEY": {
+          "required": false,
+          "default": ""
+        },
+        "BRAVE_API_KEY": {
+          "required": false,
+          "default": ""
+        },
+        "EXA_API_KEY": {
+          "required": false,
+          "default": ""
+        },
+        "SERPER_API_KEY": {
+          "required": false,
+          "default": ""
+        },
+        "JINA_API_KEY": {
+          "required": false,
+          "default": ""
+        },
+        "SEARXNG_URL": {
+          "required": false,
+          "default": ""
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,26 @@
+<div class="sag-settings-modal">
+    <div class="modal-header">
+        <div class="modal-title">SearchAgent Settings</div>
+        <div class="close" data-local-action="closeModal" aria-label="Close">
+            <img class="close-icon" src="./assets/icons/x-mark.svg" alt="close">
+        </div>
+    </div>
+
+    <div class="modal-body sag-settings-body">
+        <div class="sag-settings-grid">
+            <label class="form-item">
+                <span class="form-label">Max results</span>
+                <input id="sagMaxResults" class="form-input" type="number" min="1" max="100" step="1">
+            </label>
+            <label class="form-item">
+                <span class="form-label">Max query chars</span>
+                <input id="sagMaxQueryChars" class="form-input" type="number" min="1" max="20000" step="1">
+            </label>
+        </div>
+
+        <div class="sag-settings-actions">
+            <button id="sagSaveSettings" type="button" class="general-button" data-local-action="saveSettings">Save</button>
+        </div>
+        <div id="sagSettingsStatus" class="sag-settings-status" role="status" aria-live="polite"></div>
+    </div>
+</div>

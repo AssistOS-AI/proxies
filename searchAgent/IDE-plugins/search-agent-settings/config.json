@@ -1,0 +1,14 @@
+{
+  "pluginCategory": "application",
+  "id": "search-agent-settings",
+  "component": "search-agent-settings",
+  "location": [],
+  "label": "SearchAgent",
+  "tooltip": "SearchAgent settings",
+  "icon": "./icon.svg",
+  "presenter": "SearchAgentSettings",
+  "type": "global",
+  "autoPin": false,
+  "dependencies": [],
+  "settings": "search-agent-settings"
+}

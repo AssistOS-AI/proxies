@@ -1,0 +1,39 @@
+.sag-settings-modal {
+    width: min(520px, calc(100vw - 32px));
+}
+
+.sag-settings-body {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sag-settings-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.sag-settings-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.sag-settings-status {
+    min-height: 20px;
+    font-size: 13px;
+}
+
+.sag-settings-status.error {
+    color: var(--error-color, #b42318);
+}
+
+.sag-settings-status.success {
+    color: var(--success-color, #067647);
+}
+
+@media (max-width: 560px) {
+    .sag-settings-grid {
+        grid-template-columns: 1fr;
+    }
+}
