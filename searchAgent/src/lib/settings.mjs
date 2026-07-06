@@ -7,11 +7,11 @@ export const DEFAULT_SETTINGS = Object.freeze({
 });
 
 export function settingsPath(env = process.env) {
-    const workspacePath = String(env.WORKSPACE_PATH || '').trim();
-    if (!workspacePath) {
-        throw new Error('WORKSPACE_PATH is required for SearchAgent settings.');
+    const homePath = String(env.HOME || '').trim();
+    if (!homePath) {
+        throw new Error('HOME is required for SearchAgent settings.');
     }
-    return path.join(workspacePath, 'search-agent-settings.json');
+    return path.join(homePath, 'search-agent-settings.json');
 }
 
 export function normalizeSettings(value = {}) {

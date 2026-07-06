@@ -16,10 +16,10 @@ test('normalizes persisted search settings', () => {
     });
 });
 
-test('writes and reads settings from workspace path', async () => {
+test('writes and reads settings from home path', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-settings-'));
     try {
-        const env = { WORKSPACE_PATH: dir };
+        const env = { HOME: dir };
         const settings = await writeSettings({
             maxResults: 12,
             maxQueryChars: 900,
@@ -36,9 +36,9 @@ test('writes and reads settings from workspace path', async () => {
     }
 });
 
-test('requires WORKSPACE_PATH for settings storage', async () => {
+test('requires HOME for settings storage', async () => {
     await assert.rejects(
         () => readSettings({ env: {} }),
-        /WORKSPACE_PATH is required/,
+        /HOME is required/,
     );
 });

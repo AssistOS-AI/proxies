@@ -30,7 +30,7 @@ test('rejects missing provider or query', () => {
 
 test('handleSearch rejects unknown provider', async () => {
     await assert.rejects(
-        () => handleSearch({ provider: 'missing', query: 'test' }, { env: { WORKSPACE_PATH: '/tmp/search-agent-test-missing' } }),
+        () => handleSearch({ provider: 'missing', query: 'test' }, { env: { HOME: '/tmp/search-agent-test-missing' } }),
         /Unknown search provider/,
     );
 });
@@ -56,7 +56,7 @@ test('handleSearch returns normalized results from duckduckgo provider', async (
         maxResults: 5,
     }, {
         fetchImpl,
-        env: { WORKSPACE_PATH: '/tmp/search-agent-test-duckduckgo' },
+        env: { HOME: '/tmp/search-agent-test-duckduckgo' },
     });
 
     assert.deepEqual(result, {
@@ -88,7 +88,7 @@ test('handleSearch includes provider HTTP details for Tavily failures', async ()
         }, {
             fetchImpl,
             env: {
-                WORKSPACE_PATH: '/tmp/search-agent-test-tavily',
+                HOME: '/tmp/search-agent-test-tavily',
                 TAVILY_API_KEY: 'test-key',
             },
         }),
@@ -130,7 +130,7 @@ test('handleSearch limits Tavily provider query length', async () => {
     }, {
         fetchImpl,
         env: {
-            WORKSPACE_PATH: '/tmp/search-agent-test-tavily-context',
+            HOME: '/tmp/search-agent-test-tavily-context',
             TAVILY_API_KEY: 'test-key',
         },
     });
