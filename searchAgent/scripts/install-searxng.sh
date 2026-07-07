@@ -4,9 +4,7 @@ set -eu
 SEARXNG_REPO_URL="https://github.com/searxng/searxng.git"
 SEARXNG_HOME="/usr/local/searxng"
 SEARXNG_CLONE_DIR="${SEARXNG_HOME}/searxng-src"
-SEARXNG_SETTINGS_PATH="/etc/searxng/settings.yml"
 SEARXNG_VENV="${SEARXNG_HOME}/searx-pyenv"
-SEARXNG_SECRET_PATH="/etc/searxng/secret_key"
 
 if command -v apt-get >/dev/null 2>&1; then
     export DEBIAN_FRONTEND=noninteractive
@@ -48,31 +46,4 @@ fi
 cd "${SEARXNG_CLONE_DIR}"
 "${SEARXNG_VENV}/bin/python" -m pip install --use-pep517 --no-build-isolation -e .
 
-mkdir -p "$(dirname "${SEARXNG_SETTINGS_PATH}")"
-if [ ! -f "${SEARXNG_SETTINGS_PATH}" ]; then
-    if [ -f "${SEARXNG_CLONE_DIR}/searx/settings.yml" ]; then
-        cp "${SEARXNG_CLONE_DIR}/searx/settings.yml" "${SEARXNG_SETTINGS_PATH}"
-    elif [ -f "${SEARXNG_CLONE_DIR}/utils/templates/etc/searxng/settings.yml" ]; then
-        cp "${SEARXNG_CLONE_DIR}/utils/templates/etc/searxng/settings.yml" "${SEARXNG_SETTINGS_PATH}"
-    else
-        cat > "${SEARXNG_SETTINGS_PATH}" <<'EOF'
-use_default_settings: true
-
-search:
-  formats:
-    - html
-    - json
-
-server:
-  bind_address: "127.0.0.1"
-  port: 8888
-  limiter: false
-EOF
-    fi
-fi
-
-if [ ! -f "${SEARXNG_SECRET_PATH}" ]; then
-    head -c 32 /dev/urandom | base64 > "${SEARXNG_SECRET_PATH}"
-fi
-
-node /code/scripts/configure-searxng-settings.mjs "${SEARXNG_SETTINGS_PATH}"
+node /code/scripts/configure-searxng-settings.mjs

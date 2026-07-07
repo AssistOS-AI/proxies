@@ -81,3 +81,71 @@ test('settings UI does not expose local SearXNG as a secret field', async () => 
     const source = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.js', import.meta.url), 'utf8');
     assert.ok(!source.includes('SEARXNG_URL'));
 });
+
+test('get-searxng-settings tool returns defaults from home storage', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-searxng-settings-'));
+    try {
+        const result = await runTool('../tools/get-searxng-settings.mjs', {}, { HOME: dir });
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload.settings, {
+            categories: 'general,scientific_publications',
+            language: 'en',
+            timeRange: '',
+            safeSearch: 1,
+            page: 1,
+        });
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('update-searxng-settings tool persists structured settings and generated yaml', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-searxng-settings-'));
+    try {
+        const result = await runTool('../tools/update-searxng-settings.mjs', {
+            categories: 'general, scientific_publications, general',
+            language: 'en-US',
+            timeRange: 'year',
+            safeSearch: 9,
+            page: 99,
+        }, {
+            HOME: dir,
+        });
+
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload.settings, {
+            categories: 'general,scientific_publications',
+            language: 'en-US',
+            timeRange: 'year',
+            safeSearch: 2,
+            page: 10,
+        });
+        assert.deepEqual(
+            JSON.parse(await readFile(path.join(dir, 'searxng', 'settings.json'), 'utf8')),
+            result.payload.settings,
+        );
+        const yaml = await readFile(path.join(dir, 'searxng', 'settings.yml'), 'utf8');
+        assert.match(yaml, /formats:\n    - html\n    - json/);
+        assert.match(yaml, /safe_search: 2/);
+        assert.match(yaml, /default_lang: "en-US"/);
+        assert.match(yaml, /max_page: 10/);
+        assert.match(yaml, /bind_address: "127\.0\.0\.1"/);
+        assert.match(yaml, /port: 8888/);
+        assert.match(yaml, /secret_key: "/);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('settings UI has a separate SearXNG tab without removed fields', async () => {
+    const html = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.html', import.meta.url), 'utf8');
+    const source = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.js', import.meta.url), 'utf8');
+    assert.match(html, /data-sag-tab="searxng"/);
+    assert.match(html, /data-searxng-category/);
+    assert.match(html, /value="scientific_publications"/);
+    assert.match(html, /id="sagSearxngLanguage"[\s\S]*<option value="en">English<\/option>/);
+    assert.match(source, /search_agent_get_searxng_settings/);
+    assert.match(source, /search_agent_update_searxng_settings/);
+    assert.ok(!source.includes('requestTimeout'));
+    assert.ok(!source.includes('enableHttp2'));
+});

@@ -3,7 +3,7 @@ set -eu
 
 SEARXNG_BIND="127.0.0.1"
 SEARXNG_PORT="8888"
-SEARXNG_SETTINGS_PATH="/etc/searxng/settings.yml"
+SEARXNG_SETTINGS_PATH="${HOME}/searxng/settings.yml"
 SEARXNG_VENV="/usr/local/searxng/searx-pyenv"
 SEARXNG_APP_DIR="/usr/local/searxng/searxng-src"
 

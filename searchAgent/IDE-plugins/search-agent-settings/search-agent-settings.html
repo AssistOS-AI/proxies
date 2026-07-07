@@ -7,20 +7,97 @@
     </div>
 
     <div class="modal-body sag-settings-body">
-        <div class="sag-settings-grid">
-            <label class="form-item">
-                <span class="form-label">Max results</span>
-                <input id="sagMaxResults" class="form-input" type="number" min="1" max="100" step="1">
-            </label>
-            <label class="form-item">
-                <span class="form-label">Max query chars</span>
-                <input id="sagMaxQueryChars" class="form-input" type="number" min="1" max="20000" step="1">
-            </label>
+        <div class="sag-tabs" role="tablist">
+            <button id="sagGeneralTab" class="sag-tab is-active" type="button" data-sag-tab="general" role="tab" aria-selected="true">General</button>
+            <button id="sagSearxngTab" class="sag-tab" type="button" data-sag-tab="searxng" role="tab" aria-selected="false">SearXNG</button>
         </div>
 
-        <div class="sag-secrets-panel">
-            <div class="sag-section-title">Provider credentials</div>
-            <div id="sagSecretsGrid" class="sag-secrets-grid"></div>
+        <div id="sagGeneralPanel" class="sag-tab-panel is-active" data-sag-panel="general" role="tabpanel">
+            <div class="sag-settings-grid">
+                <label class="form-item">
+                    <span class="form-label">Max results</span>
+                    <input id="sagMaxResults" class="form-input" type="number" min="1" max="100" step="1">
+                </label>
+                <label class="form-item">
+                    <span class="form-label">Max query chars</span>
+                    <input id="sagMaxQueryChars" class="form-input" type="number" min="1" max="20000" step="1">
+                </label>
+            </div>
+
+            <div class="sag-secrets-panel">
+                <div class="sag-section-title">Provider credentials</div>
+                <div id="sagSecretsGrid" class="sag-secrets-grid"></div>
+            </div>
+        </div>
+
+        <div id="sagSearxngPanel" class="sag-tab-panel" data-sag-panel="searxng" role="tabpanel">
+            <div class="sag-settings-grid">
+                <div class="form-item sag-full-width">
+                    <span class="form-label">Categories</span>
+                    <div id="sagSearxngCategories" class="sag-checkbox-grid">
+                        <label class="sag-checkbox-item">
+                            <input type="checkbox" value="general" data-searxng-category>
+                            <span>General</span>
+                        </label>
+                        <label class="sag-checkbox-item">
+                            <input type="checkbox" value="scientific_publications" data-searxng-category>
+                            <span>Scientific publications</span>
+                        </label>
+                        <label class="sag-checkbox-item">
+                            <input type="checkbox" value="science" data-searxng-category>
+                            <span>Science</span>
+                        </label>
+                        <label class="sag-checkbox-item">
+                            <input type="checkbox" value="news" data-searxng-category>
+                            <span>News</span>
+                        </label>
+                        <label class="sag-checkbox-item">
+                            <input type="checkbox" value="it" data-searxng-category>
+                            <span>IT</span>
+                        </label>
+                        <label class="sag-checkbox-item">
+                            <input type="checkbox" value="files" data-searxng-category>
+                            <span>Files</span>
+                        </label>
+                    </div>
+                </div>
+                <label class="form-item">
+                    <span class="form-label">Language</span>
+                    <select id="sagSearxngLanguage" class="form-input">
+                        <option value="en">English</option>
+                        <option value="en-US">English US</option>
+                        <option value="en-GB">English UK</option>
+                        <option value="ro">Romanian</option>
+                        <option value="ro-RO">Romanian RO</option>
+                        <option value="fr">French</option>
+                        <option value="de">German</option>
+                        <option value="es">Spanish</option>
+                        <option value="pt">Portuguese</option>
+                        <option value="it">Italian</option>
+                    </select>
+                </label>
+                <label class="form-item">
+                    <span class="form-label">Time range</span>
+                    <select id="sagSearxngTimeRange" class="form-input">
+                        <option value="">Any time</option>
+                        <option value="day">Day</option>
+                        <option value="month">Month</option>
+                        <option value="year">Year</option>
+                    </select>
+                </label>
+                <label class="form-item">
+                    <span class="form-label">SafeSearch</span>
+                    <select id="sagSearxngSafeSearch" class="form-input">
+                        <option value="0">Off</option>
+                        <option value="1">Moderate</option>
+                        <option value="2">Strict</option>
+                    </select>
+                </label>
+                <label class="form-item">
+                    <span class="form-label">Page</span>
+                    <input id="sagSearxngPage" class="form-input" type="number" min="1" max="10" step="1">
+                </label>
+            </div>
         </div>
 
         <div class="sag-settings-actions">

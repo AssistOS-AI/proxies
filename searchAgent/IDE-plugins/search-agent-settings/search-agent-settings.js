@@ -3,6 +3,16 @@ const DEFAULT_SETTINGS = Object.freeze({
     maxQueryChars: 4000
 });
 
+const DEFAULT_SEARXNG_SETTINGS = Object.freeze({
+    categories: 'general,scientific_publications',
+    language: 'en',
+    timeRange: '',
+    safeSearch: 1,
+    page: 1
+});
+
+const VALID_TIME_RANGES = new Set(['', 'day', 'month', 'year']);
+
 const LOG_PREFIX = '[SearchAgent Settings]';
 const SEARCH_AGENT_MCP_PATH = '/searchAgent/mcp';
 const SEARCH_AGENT_PRINCIPAL = 'agent:proxies/searchAgent';
@@ -35,6 +45,36 @@ function normalizeSettings(value = {}) {
             1,
             20000
         )
+    };
+}
+
+function normalizeCategories(value, fallback) {
+    const raw = typeof value === 'string' ? value : '';
+    const categories = raw
+        .split(',')
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^[a-z0-9_-]+$/.test(item));
+    return categories.length ? [...new Set(categories)].join(',') : fallback;
+}
+
+function normalizeLanguage(value, fallback) {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    return /^[a-zA-Z]{2,3}(-[a-zA-Z]{2})?$/.test(raw) ? raw : fallback;
+}
+
+function normalizeTimeRange(value, fallback) {
+    const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    return VALID_TIME_RANGES.has(raw) ? raw : fallback;
+}
+
+function normalizeSearxngSettings(value = {}) {
+    const input = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    return {
+        categories: normalizeCategories(input.categories, DEFAULT_SEARXNG_SETTINGS.categories),
+        language: normalizeLanguage(input.language, DEFAULT_SEARXNG_SETTINGS.language),
+        timeRange: normalizeTimeRange(input.timeRange, DEFAULT_SEARXNG_SETTINGS.timeRange),
+        safeSearch: normalizeInteger(input.safeSearch, DEFAULT_SEARXNG_SETTINGS.safeSearch, 0, 2),
+        page: normalizeInteger(input.page, DEFAULT_SEARXNG_SETTINGS.page, 1, 10)
     };
 }
 
@@ -78,7 +118,9 @@ export class SearchAgentSettings {
         this.element = element;
         this.invalidate = invalidate;
         this.state = {
+            activeTab: 'general',
             settings: normalizeSettings(),
+            searxngSettings: normalizeSearxngSettings(),
             secrets: new Map(),
             status: '',
             statusType: ''
@@ -102,11 +144,36 @@ export class SearchAgentSettings {
     cacheElements() {
         this.inputs = {
             maxResults: this.element.querySelector('#sagMaxResults'),
-            maxQueryChars: this.element.querySelector('#sagMaxQueryChars')
+            maxQueryChars: this.element.querySelector('#sagMaxQueryChars'),
+            searxngCategories: this.element.querySelector('#sagSearxngCategories'),
+            searxngLanguage: this.element.querySelector('#sagSearxngLanguage'),
+            searxngTimeRange: this.element.querySelector('#sagSearxngTimeRange'),
+            searxngSafeSearch: this.element.querySelector('#sagSearxngSafeSearch'),
+            searxngPage: this.element.querySelector('#sagSearxngPage')
         };
+        this.tabButtons = [...this.element.querySelectorAll('[data-sag-tab]')];
+        this.tabPanels = [...this.element.querySelectorAll('[data-sag-panel]')];
         this.secretsGrid = this.element.querySelector('#sagSecretsGrid');
         this.statusElement = this.element.querySelector('#sagSettingsStatus');
+        this.tabButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                this.setActiveTab(button.dataset.sagTab || 'general');
+            });
+        });
         this.renderSecretFields();
+    }
+
+    setActiveTab(tab) {
+        const nextTab = tab === 'searxng' ? 'searxng' : 'general';
+        this.state.activeTab = nextTab;
+        this.tabButtons?.forEach((button) => {
+            const active = button.dataset.sagTab === nextTab;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        this.tabPanels?.forEach((panel) => {
+            panel.classList.toggle('is-active', panel.dataset.sagPanel === nextTab);
+        });
     }
 
     syncInputsFromState() {
@@ -117,12 +184,50 @@ export class SearchAgentSettings {
         if (this.inputs?.maxQueryChars) {
             this.inputs.maxQueryChars.value = String(settings.maxQueryChars);
         }
+        this.syncSearxngInputsFromState();
+    }
+
+    syncSearxngInputsFromState() {
+        const settings = normalizeSearxngSettings(this.state.searxngSettings);
+        if (this.inputs?.searxngCategories) {
+            const selected = new Set(settings.categories.split(',').map((item) => item.trim()).filter(Boolean));
+            this.inputs.searxngCategories.querySelectorAll('[data-searxng-category]').forEach((input) => {
+                input.checked = selected.has(input.value);
+            });
+        }
+        if (this.inputs?.searxngLanguage) {
+            this.inputs.searxngLanguage.value = settings.language;
+        }
+        if (this.inputs?.searxngTimeRange) {
+            this.inputs.searxngTimeRange.value = settings.timeRange;
+        }
+        if (this.inputs?.searxngSafeSearch) {
+            this.inputs.searxngSafeSearch.value = String(settings.safeSearch);
+        }
+        if (this.inputs?.searxngPage) {
+            this.inputs.searxngPage.value = String(settings.page);
+        }
     }
 
     collectSettingsFromInputs() {
         return normalizeSettings({
             maxResults: this.inputs?.maxResults?.value,
             maxQueryChars: this.inputs?.maxQueryChars?.value
+        });
+    }
+
+    collectSearxngSettingsFromInputs() {
+        const categories = this.inputs?.searxngCategories
+            ? [...this.inputs.searxngCategories.querySelectorAll('[data-searxng-category]:checked')]
+                .map((input) => input.value)
+                .join(',')
+            : '';
+        return normalizeSearxngSettings({
+            categories,
+            language: this.inputs?.searxngLanguage?.value,
+            timeRange: this.inputs?.searxngTimeRange?.value,
+            safeSearch: this.inputs?.searxngSafeSearch?.value,
+            page: this.inputs?.searxngPage?.value
         });
     }
 
@@ -284,7 +389,9 @@ export class SearchAgentSettings {
         this.setStatus('Loading...');
         try {
             const payload = await this.callSearchAgent('search_agent_get_settings', {});
+            const searxngPayload = await this.callSearchAgent('search_agent_get_searxng_settings', {});
             this.state.settings = normalizeSettings(payload.settings);
+            this.state.searxngSettings = normalizeSearxngSettings(searxngPayload.settings);
             this.syncInputsFromState();
             await this.reloadSecrets();
             this.setStatus('');
@@ -297,6 +404,10 @@ export class SearchAgentSettings {
     async saveSettings() {
         this.setStatus('Saving...');
         try {
+            if (this.state.activeTab === 'searxng') {
+                await this.saveSearxngSettings();
+                return;
+            }
             const settings = this.collectSettingsFromInputs();
             const payload = await this.callSearchAgent('search_agent_update_settings', settings);
             this.state.settings = normalizeSettings(payload.settings);
@@ -309,5 +420,13 @@ export class SearchAgentSettings {
             this.setStatus(getErrorMessage(error, 'Save failed.'), 'error');
             throw error;
         }
+    }
+
+    async saveSearxngSettings() {
+        const settings = this.collectSearxngSettingsFromInputs();
+        const payload = await this.callSearchAgent('search_agent_update_searxng_settings', settings);
+        this.state.searxngSettings = normalizeSearxngSettings(payload.settings);
+        this.syncSearxngInputsFromState();
+        this.setStatus('Saved.', 'success');
     }
 }

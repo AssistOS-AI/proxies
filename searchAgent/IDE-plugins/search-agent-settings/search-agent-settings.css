@@ -8,10 +8,64 @@
     gap: 16px;
 }
 
+.sag-tabs {
+    display: inline-flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--border-color, #d0d5dd);
+}
+
+.sag-tab {
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--secondary-text-color, #667085);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 10px;
+}
+
+.sag-tab.is-active {
+    border-bottom-color: var(--accent-color, #2563eb);
+    color: var(--primary-text-color, #101828);
+}
+
+.sag-tab-panel {
+    display: none;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.sag-tab-panel.is-active {
+    display: flex;
+}
+
 .sag-settings-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 12px;
+}
+
+.sag-full-width {
+    grid-column: 1 / -1;
+}
+
+.sag-checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 12px;
+}
+
+.sag-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    min-width: 0;
+}
+
+.sag-checkbox-item input {
+    flex: 0 0 auto;
 }
 
 .sag-secrets-panel {
