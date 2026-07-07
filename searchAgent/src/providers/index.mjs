@@ -27,11 +27,14 @@ export function listProviders(env = process.env) {
         providers: providers.map((provider) => ({
             provider: provider.key,
             name: provider.name,
-            configured: isConfigured(provider, env),
+            requiredEnv: envStatus(provider.requires || [], env),
         })),
     };
 }
 
-function isConfigured(provider, env) {
-    return (provider.requires || []).every((name) => Boolean(env[name]));
+function envStatus(names, env) {
+    return names.map((name) => ({
+        name,
+        configured: Boolean(env[name]),
+    }));
 }

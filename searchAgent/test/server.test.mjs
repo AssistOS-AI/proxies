@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { handleSearch, normalizeSearchRequest } from '../src/server.mjs';
+import { listProviders } from '../src/providers/index.mjs';
 
 test('normalizes search request', () => {
     assert.deepEqual(normalizeSearchRequest({
@@ -26,6 +27,27 @@ test('rejects missing provider or query', () => {
         () => normalizeSearchRequest({ provider: 'duckduckgo' }),
         /provider and query are required/,
     );
+});
+
+test('listProviders includes required provider environment keys', () => {
+    const payload = listProviders({ TAVILY_API_KEY: 'test-key' });
+    const byProvider = new Map(payload.providers.map((provider) => [provider.provider, provider]));
+
+    assert.deepEqual(byProvider.get('duckduckgo'), {
+        provider: 'duckduckgo',
+        name: 'DuckDuckGo',
+        requiredEnv: [],
+    });
+    assert.deepEqual(byProvider.get('tavily'), {
+        provider: 'tavily',
+        name: 'Tavily',
+        requiredEnv: [{ name: 'TAVILY_API_KEY', configured: true }],
+    });
+    assert.deepEqual(byProvider.get('jina'), {
+        provider: 'jina',
+        name: 'Jina Search',
+        requiredEnv: [],
+    });
 });
 
 test('handleSearch rejects unknown provider', async () => {

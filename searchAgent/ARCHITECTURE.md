@@ -150,11 +150,13 @@ Providerii curenti sunt:
 {
   "provider": "tavily",
   "name": "Tavily",
-  "configured": true
+  "requiredEnv": [
+    { "name": "TAVILY_API_KEY", "configured": true }
+  ]
 }
 ```
 
-`configured` este calculat din variabilele de environment cerute de provider. Daca un provider nu are cheile necesare, ramane listat, dar cautarea prin el intoarce eroare `PROVIDER_NOT_CONFIGURED`.
+`requiredEnv` include variabilele de environment obligatorii pentru provider si statusul fiecareia. Daca un provider nu are cheile necesare, ramane listat, dar cautarea prin el intoarce eroare `PROVIDER_NOT_CONFIGURED`.
 
 ## Configurarea providerilor
 
