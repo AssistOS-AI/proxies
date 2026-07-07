@@ -4,7 +4,8 @@ import { normalizeResults } from '../lib/normalize.mjs';
 export const provider = {
     key: 'jina',
     name: 'Jina Search',
-    requires: ['JINA_API_KEY'],
+    requires: [],
+    optionalSecrets: ['JINA_API_KEY'],
     async search({ query, maxResults, env = process.env, fetchImpl = fetch }) {
         const headers = { accept: 'application/json' };
         if (env.JINA_API_KEY) headers.authorization = `Bearer ${env.JINA_API_KEY}`;

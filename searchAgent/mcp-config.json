@@ -1,0 +1,85 @@
+{
+  "tools": [
+    {
+      "name": "search_agent_search",
+      "title": "SearchAgent Search",
+      "description": "Run a web search through a configured SearchAgent provider.",
+      "command": "/usr/local/bin/node",
+      "args": ["/code/tools/search.mjs"],
+      "cwd": "/code",
+      "timeoutMs": 60000,
+      "inputSchema": {
+        "provider": {
+          "type": "string",
+          "description": "Search provider key.",
+          "minLength": 1,
+          "optional": false
+        },
+        "query": {
+          "type": "string",
+          "description": "Search query.",
+          "minLength": 1,
+          "optional": false
+        },
+        "maxResults": {
+          "type": "integer",
+          "description": "Maximum number of results to return.",
+          "minimum": 1,
+          "maximum": 100,
+          "optional": true
+        },
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_agent_list_providers",
+      "title": "SearchAgent List Providers",
+      "description": "List SearchAgent providers and whether their required secrets are configured.",
+      "command": "/usr/local/bin/node",
+      "args": ["/code/tools/list-providers.mjs"],
+      "cwd": "/code",
+      "timeoutMs": 30000,
+      "inputSchema": {
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_agent_get_settings",
+      "title": "SearchAgent Get Settings",
+      "description": "Return non-secret SearchAgent settings.",
+      "command": "/usr/local/bin/node",
+      "args": ["/code/tools/get-settings.mjs"],
+      "cwd": "/code",
+      "timeoutMs": 30000,
+      "inputSchema": {
+        "additionalProperties": false
+      }
+    },
+    {
+      "name": "search_agent_update_settings",
+      "title": "SearchAgent Update Settings",
+      "description": "Persist non-secret SearchAgent settings.",
+      "command": "/usr/local/bin/node",
+      "args": ["/code/tools/update-settings.mjs"],
+      "cwd": "/code",
+      "timeoutMs": 30000,
+      "inputSchema": {
+        "maxResults": {
+          "type": "integer",
+          "description": "Maximum search results allowed per request.",
+          "minimum": 1,
+          "maximum": 100,
+          "optional": true
+        },
+        "maxQueryChars": {
+          "type": "integer",
+          "description": "Maximum accepted query length.",
+          "minimum": 1,
+          "maximum": 20000,
+          "optional": true
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}
