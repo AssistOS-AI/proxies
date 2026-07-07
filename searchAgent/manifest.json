@@ -1,8 +1,23 @@
 {
   "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
   "about": "SearchAgent exposes normalized provider search through MCP tools.",
+  "agent": "sh /code/scripts/start-search-agent.sh",
   "readiness": {
     "protocol": "mcp"
+  },
+  "health": {
+    "readiness": {
+      "script": "readiness.sh",
+      "interval": 1,
+      "timeout": 5,
+      "failureThreshold": 180,
+      "successThreshold": 1
+    }
+  },
+  "profiles": {
+    "default": {
+      "install": "sh /code/scripts/install-searxng.sh"
+    }
   },
   "ideSettings": [
     {

@@ -8,7 +8,7 @@ GPTResearcher uses SearchAgent for web search through router-mediated agent-to-a
 
 ## Runtime
 
-The agent uses the bundled Ploinky AgentServer. `manifest.json` declares MCP readiness and does not define `start`, `agent`, TCP readiness, `httpServices`, or provider API keys.
+The agent starts a local SearXNG process for the `searxng` provider and then starts the bundled Ploinky AgentServer. The install hook follows SearXNG's step-by-step installation shape inside the container: clone to `/usr/local/searxng/searxng-src`, install into `/usr/local/searxng/searx-pyenv`, preinstall the documented build dependencies, and write `/etc/searxng/settings.yml` for local JSON API use. `manifest.json` declares MCP readiness and does not define TCP readiness, `httpServices`, or provider API keys.
 
 The MCP surface is declared in `mcp-config.json`. Tool handlers live in `tools/` and own the core business logic for search, provider listing, and settings. Shared code in `src/lib/` is limited to cross-tool plumbing such as DPU secret access, tool I/O, errors, and result normalization.
 
@@ -72,9 +72,8 @@ Secret keys are the provider environment names:
 - `EXA_API_KEY`
 - `SERPER_API_KEY`
 - `JINA_API_KEY`
-- `SEARXNG_URL`
 
-`duckduckgo` requires no secret. `jina` can work without `JINA_API_KEY`, but uses it when configured.
+`duckduckgo` and local `searxng` require no secret. `jina` can work without `JINA_API_KEY`, but uses it when configured.
 
 ## Providers
 
@@ -88,7 +87,7 @@ Providers are registered by the MCP tool entrypoints in `tools/search.mjs` and `
 - `searxng`
 - `jina`
 
-Provider listing returns each provider and the configured state for required secrets. A provider can be listed while unconfigured; a search through an unconfigured provider returns `PROVIDER_NOT_CONFIGURED`.
+Provider listing returns only providers that are ready to use. Local `searxng` is ready after the SearchAgent install hook has installed SearXNG and startup has made its JSON API available on `127.0.0.1:8888`.
 
 ## Search Flow
 

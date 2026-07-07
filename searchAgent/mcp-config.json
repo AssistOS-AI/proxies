@@ -34,7 +34,7 @@
     {
       "name": "search_agent_list_providers",
       "title": "SearchAgent List Providers",
-      "description": "List SearchAgent providers and whether their required secrets are configured.",
+      "description": "List SearchAgent providers that are ready to use.",
       "command": "/usr/local/bin/node",
       "args": ["/code/tools/list-providers.mjs"],
       "cwd": "/code",

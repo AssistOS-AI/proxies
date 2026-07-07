@@ -4,7 +4,6 @@ const PROVIDER_SECRET_KEYS = Object.freeze([
     'EXA_API_KEY',
     'SERPER_API_KEY',
     'JINA_API_KEY',
-    'SEARXNG_URL',
 ]);
 
 let cachedDpuClient = null;

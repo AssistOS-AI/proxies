@@ -76,3 +76,8 @@ test('get-settings tool requires HOME for settings storage', async () => {
     assert.equal(result.payload.ok, false);
     assert.match(result.payload.error.message, /HOME is required/);
 });
+
+test('settings UI does not expose local SearXNG as a secret field', async () => {
+    const source = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.js', import.meta.url), 'utf8');
+    assert.ok(!source.includes('SEARXNG_URL'));
+});

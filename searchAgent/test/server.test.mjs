@@ -44,6 +44,10 @@ test('list-providers tool only includes providers ready to use', async () => {
     const result = await runNodeTool('../tools/list-providers.mjs', {}, {
         env: {
             TAVILY_API_KEY: 'test-key',
+            BRAVE_API_KEY: 'test-key',
+            EXA_API_KEY: 'test-key',
+            SERPER_API_KEY: 'test-key',
+            JINA_API_KEY: 'test-key',
         },
     });
     assert.equal(result.code, 0);
@@ -62,10 +66,22 @@ test('list-providers tool only includes providers ready to use', async () => {
         provider: 'jina',
         name: 'Jina Search',
     });
-    assert.equal(byProvider.has('brave'), false);
-    assert.equal(byProvider.has('exa'), false);
-    assert.equal(byProvider.has('serper'), false);
-    assert.equal(byProvider.has('searxng'), false);
+    assert.deepEqual(byProvider.get('searxng'), {
+        provider: 'searxng',
+        name: 'SearXNG',
+    });
+    assert.deepEqual(byProvider.get('brave'), {
+        provider: 'brave',
+        name: 'Brave Search',
+    });
+    assert.deepEqual(byProvider.get('exa'), {
+        provider: 'exa',
+        name: 'Exa',
+    });
+    assert.deepEqual(byProvider.get('serper'), {
+        provider: 'serper',
+        name: 'Serper',
+    });
 });
 
 test('search tool rejects unknown provider', async () => {
@@ -101,6 +117,40 @@ test('search tool returns normalized results from duckduckgo provider', async ()
                     title: 'Example result',
                     url: 'https://example.com/result',
                     snippet: 'Example result - useful snippet',
+                },
+            ],
+        });
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool uses local SearXNG JSON API', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-searxng-'));
+    const fetchMock = new URL('./fixtures/mock-searxng-fetch.mjs', import.meta.url).pathname;
+    try {
+        const result = await runSearchTool({
+            provider: 'searxng',
+            query: 'local search',
+            maxResults: 5,
+        }, {
+            env: { HOME: dir },
+            fetchMock,
+        });
+
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload, {
+            ok: true,
+            results: [
+                {
+                    title: 'SearXNG result',
+                    url: 'https://example.com/searxng',
+                    snippet: 'SearXNG useful snippet',
+                    content: 'SearXNG useful snippet',
+                    observedQuery: 'local search',
+                    observedFormat: 'json',
+                    observedCategories: 'general',
+                    observedAccept: 'application/json',
                 },
             ],
         });
