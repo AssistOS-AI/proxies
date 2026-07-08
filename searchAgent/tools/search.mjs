@@ -3,7 +3,6 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { SearchAgentError } from '../src/lib/errors.mjs';
-import { normalizeSearxngSearchOptions, readSearxngSettings } from '../src/lib/searxng-settings.mjs';
 import { loadProviderSecretEnv } from '../src/lib/secrets.mjs';
 import { runToolSafe } from '../src/lib/tool-io.mjs';
 import { provider as brave } from '../src/providers/brave.mjs';
@@ -79,7 +78,6 @@ async function handleSearch(body, {
     dpuClient = null,
 } = {}) {
     const settings = await readSettings(env);
-    const searxngSettings = await readSearxngSettings(env);
     const input = normalizeSearchRequest(body, config, settings);
     const provider = providerMap.get(input.provider);
     if (!provider) {
@@ -94,7 +92,6 @@ async function handleSearch(body, {
     const results = await provider.search({
         query: input.query,
         maxResults: input.maxResults,
-        searxng: normalizeSearxngSearchOptions(input.searxng, searxngSettings),
         env: providerEnv,
         fetchImpl,
     });
@@ -126,13 +123,6 @@ function normalizeSearchRequest(body, config = resolveSearchConfig(), settings =
         provider,
         query,
         maxResults: normalizeMaxResults(body?.maxResults, maxResults),
-        searxng: {
-            categories: body?.categories,
-            language: body?.language,
-            timeRange: body?.timeRange,
-            safeSearch: body?.safeSearch,
-            page: body?.page,
-        },
     };
 }
 

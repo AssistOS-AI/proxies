@@ -2,6 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
+import { readProviderSecretHints } from '../src/lib/secrets.mjs';
 import { runToolSafe } from '../src/lib/tool-io.mjs';
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -46,4 +47,5 @@ async function readSettings(env = process.env) {
 await runToolSafe(async () => ({
     ok: true,
     settings: await readSettings(process.env),
+    secrets: await readProviderSecretHints(),
 }));

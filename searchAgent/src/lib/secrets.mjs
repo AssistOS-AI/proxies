@@ -12,6 +12,13 @@ export function providerSecretKeys() {
     return [...PROVIDER_SECRET_KEYS];
 }
 
+export function buildSecretHint(value) {
+    const secret = String(value || '');
+    if (!secret) return '';
+    if (secret.length <= 10) return '********';
+    return `${secret.slice(0, 6)}${'*'.repeat(secret.length - 10)}${secret.slice(-4)}`;
+}
+
 async function getDpuClient() {
     if (cachedDpuClient) return cachedDpuClient;
     const module = await import('/Agent/client/AgentMcpClient.mjs');
@@ -33,6 +40,26 @@ export async function readDpuSecret(key, { dpuClient = null } = {}) {
     }
     const value = result.secret?.value;
     return typeof value === 'string' ? value : '';
+}
+
+export async function readProviderSecretHints({ dpuClient = null, keys = PROVIDER_SECRET_KEYS } = {}) {
+    const requiredKeys = Array.isArray(keys) ? keys.filter((key) => PROVIDER_SECRET_KEYS.includes(key)) : [];
+    const hints = Object.fromEntries(requiredKeys.map((key) => [key, '']));
+    if (!requiredKeys.length) return hints;
+    let client;
+    try {
+        client = dpuClient || await getDpuClient();
+    } catch {
+        return hints;
+    }
+    await Promise.all(requiredKeys.map(async (key) => {
+        try {
+            hints[key] = buildSecretHint(await readDpuSecret(key, { dpuClient: client }));
+        } catch {
+            hints[key] = '';
+        }
+    }));
+    return hints;
 }
 
 export async function loadProviderSecretEnv({ env = process.env, dpuClient = null, keys = PROVIDER_SECRET_KEYS } = {}) {

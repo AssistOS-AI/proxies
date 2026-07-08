@@ -28,35 +28,6 @@
           "maximum": 100,
           "optional": true
         },
-        "categories": {
-          "type": "string",
-          "description": "SearXNG categories override.",
-          "optional": true
-        },
-        "language": {
-          "type": "string",
-          "description": "SearXNG language override.",
-          "optional": true
-        },
-        "timeRange": {
-          "type": "string",
-          "description": "SearXNG time range override: day, month, or year.",
-          "optional": true
-        },
-        "safeSearch": {
-          "type": "integer",
-          "description": "SearXNG safe search override: 0, 1, or 2.",
-          "minimum": 0,
-          "maximum": 2,
-          "optional": true
-        },
-        "page": {
-          "type": "integer",
-          "description": "SearXNG result page override.",
-          "minimum": 1,
-          "maximum": 10,
-          "optional": true
-        },
         "additionalProperties": false
       }
     },
@@ -105,59 +76,6 @@
           "description": "Maximum accepted query length.",
           "minimum": 1,
           "maximum": 20000,
-          "optional": true
-        },
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "search_agent_get_searxng_settings",
-      "title": "SearchAgent Get SearXNG Settings",
-      "description": "Return SearchAgent-managed SearXNG settings.",
-      "command": "/usr/local/bin/node",
-      "args": ["/code/tools/get-searxng-settings.mjs"],
-      "cwd": "/code",
-      "timeoutMs": 30000,
-      "inputSchema": {
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "search_agent_update_searxng_settings",
-      "title": "SearchAgent Update SearXNG Settings",
-      "description": "Persist SearchAgent-managed SearXNG settings.",
-      "command": "/usr/local/bin/node",
-      "args": ["/code/tools/update-searxng-settings.mjs"],
-      "cwd": "/code",
-      "timeoutMs": 30000,
-      "inputSchema": {
-        "categories": {
-          "type": "string",
-          "description": "SearXNG categories.",
-          "optional": true
-        },
-        "language": {
-          "type": "string",
-          "description": "SearXNG language.",
-          "optional": true
-        },
-        "timeRange": {
-          "type": "string",
-          "description": "SearXNG time range: day, month, or year.",
-          "optional": true
-        },
-        "safeSearch": {
-          "type": "integer",
-          "description": "SearXNG safe search: 0, 1, or 2.",
-          "minimum": 0,
-          "maximum": 2,
-          "optional": true
-        },
-        "page": {
-          "type": "integer",
-          "description": "SearXNG result page.",
-          "minimum": 1,
-          "maximum": 10,
           "optional": true
         },
         "additionalProperties": false

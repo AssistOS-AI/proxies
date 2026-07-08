@@ -8,7 +8,7 @@ GPTResearcher uses SearchAgent for web search through router-mediated agent-to-a
 
 ## Runtime
 
-The agent starts a local SearXNG process for the `searxng` provider and then starts the bundled Ploinky AgentServer. The install hook follows SearXNG's step-by-step installation shape inside the container: clone to `/usr/local/searxng/searxng-src`, install into `/usr/local/searxng/searx-pyenv`, and preinstall the documented build dependencies. Only SearXNG configuration persists in `$HOME/searxng`, which Ploinky maps into workspace `.data`. `manifest.json` declares MCP readiness and does not define TCP readiness, `httpServices`, or provider API keys.
+The agent starts a local SearXNG process for the `searxng` provider and then starts the bundled Ploinky AgentServer. The install hook follows SearXNG's step-by-step installation shape inside the container: clone to `/usr/local/searxng/searxng-src`, install into `/usr/local/searxng/searx-pyenv`, and preinstall the documented build dependencies. SearXNG uses a minimal generated `$HOME/searxng/settings.yml` and otherwise relies on SearXNG defaults. `manifest.json` declares MCP readiness and does not define TCP readiness, `httpServices`, or provider API keys.
 
 The MCP surface is declared in `mcp-config.json`. Tool handlers live in `tools/` and own the core business logic for search, provider listing, and settings. Shared code in `src/lib/` is limited to cross-tool plumbing such as DPU secret access, tool I/O, errors, and result normalization.
 
@@ -20,8 +20,6 @@ SearchAgent exposes authenticated user tools:
 - `search_agent_list_providers`: list providers and configured-secret status.
 - `search_agent_get_settings`: read non-secret settings.
 - `search_agent_update_settings`: persist non-secret settings.
-- `search_agent_get_searxng_settings`: read SearchAgent-managed SearXNG settings.
-- `search_agent_update_searxng_settings`: persist SearchAgent-managed SearXNG settings and regenerate `$HOME/searxng/settings.yml`.
 
 Search input:
 
@@ -29,12 +27,7 @@ Search input:
 {
   "provider": "duckduckgo",
   "query": "search query",
-  "maxResults": 5,
-  "categories": "general,scientific_publications",
-  "language": "en",
-  "timeRange": "year",
-  "safeSearch": 1,
-  "page": 1
+  "maxResults": 5
 }
 ```
 
@@ -66,27 +59,31 @@ The file contains only:
 
 `maxResults` is normalized between `1` and `100`. `maxQueryChars` is normalized between `1` and `20000`.
 
-SearXNG settings are stored separately in:
+SearXNG has no user-configurable SearchAgent settings. Runtime startup only needs:
 
 ```text
-$HOME/searxng/settings.json
 $HOME/searxng/settings.yml
 $HOME/searxng/secret_key
 ```
 
-The JSON file stores SearchAgent defaults for SearXNG request fields:
+The generated YAML is intentionally minimal:
 
-```json
-{
-  "categories": "general,scientific_publications",
-  "language": "en",
-  "timeRange": "",
-  "safeSearch": 1,
-  "page": 1
-}
+```yaml
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  bind_address: "127.0.0.1"
+  port: 8888
+  limiter: false
+  secret_key: "<generated>"
 ```
 
-The YAML file is generated for SearXNG runtime startup and is not a hand-edited source of truth.
+Everything else comes from SearXNG defaults.
 
 Provider credentials are stored in DPU secrets, not in SearchAgent settings or manifest profiles. SearchAgent reads them by calling `dpuAgent` through `/Agent/client/AgentMcpClient.mjs` and the internal `dpu_agent_secret_get` tool. The SearchAgent settings UI writes secrets with DPU user tools and grants `read` to:
 
@@ -125,10 +122,9 @@ For `search_agent_search`, `tools/search.mjs`:
 1. Reads non-secret settings.
 2. Validates `provider` and `query`.
 3. Applies `maxQueryChars` and `maxResults`.
-4. Reads SearXNG defaults from `$HOME/searxng/settings.json`.
-5. Loads only the DPU secrets required by the selected provider.
-6. Calls the provider implementation.
-7. Returns normalized results.
+4. Loads only the DPU secrets required by the selected provider.
+5. Calls the provider implementation.
+6. Returns normalized results.
 
 SearchAgent does not semantically rewrite queries. Individual providers may apply provider-specific constraints, such as Tavily's query length limit.
 

@@ -9,7 +9,7 @@ async function runNodeTool(relativePath, input, { env = {}, fetchMock = '' } = {
     const toolPath = new URL(relativePath, import.meta.url).pathname;
     const mockArgs = fetchMock ? ['--import', fetchMock] : [];
     const child = spawn(process.execPath, [...mockArgs, toolPath], {
-        env: { ...process.env, ...env },
+        env: { ...cleanNodeTestEnv(process.env), ...env },
         stdio: ['pipe', 'pipe', 'pipe'],
     });
     child.stdin.end(JSON.stringify({ input }));
@@ -22,6 +22,12 @@ async function runNodeTool(relativePath, input, { env = {}, fetchMock = '' } = {
     const code = await new Promise((resolve) => child.on('close', resolve));
     const payload = stdout ? JSON.parse(stdout) : null;
     return { code, payload, stderr };
+}
+
+function cleanNodeTestEnv(env) {
+    return Object.fromEntries(
+        Object.entries(env).filter(([key]) => !key.startsWith('NODE_TEST')),
+    );
 }
 
 async function runSearchTool(input, options = {}) {
@@ -133,11 +139,6 @@ test('search tool uses local SearXNG JSON API', async () => {
             provider: 'searxng',
             query: 'local search',
             maxResults: 5,
-            categories: 'general,scientific_publications',
-            language: 'en',
-            timeRange: 'year',
-            safeSearch: 2,
-            page: 3,
         }, {
             env: { HOME: dir },
             fetchMock,
@@ -154,11 +155,11 @@ test('search tool uses local SearXNG JSON API', async () => {
                     content: 'SearXNG useful snippet',
                     observedQuery: 'local search',
                     observedFormat: 'json',
-                    observedCategories: 'general,scientific_publications',
-                    observedLanguage: 'en',
-                    observedTimeRange: 'year',
-                    observedSafeSearch: '2',
-                    observedPage: '3',
+                    observedCategories: null,
+                    observedLanguage: null,
+                    observedTimeRange: null,
+                    observedSafeSearch: null,
+                    observedPage: null,
                     observedAccept: 'application/json',
                 },
             ],
