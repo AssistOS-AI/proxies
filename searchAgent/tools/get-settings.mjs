@@ -8,6 +8,7 @@ import { runToolSafe } from '../src/lib/tool-io.mjs';
 const DEFAULT_SETTINGS = Object.freeze({
     maxResults: 20,
     maxQueryChars: 4000,
+    currentProvider: 'searxng',
 });
 
 function settingsPath(env = process.env) {
@@ -29,7 +30,13 @@ function normalizeSettings(value = {}) {
     return {
         maxResults: normalizeInteger(input.maxResults, DEFAULT_SETTINGS.maxResults, 1, 100),
         maxQueryChars: normalizeInteger(input.maxQueryChars, DEFAULT_SETTINGS.maxQueryChars, 1, 20000),
+        currentProvider: normalizeProvider(input.currentProvider, DEFAULT_SETTINGS.currentProvider),
     };
+}
+
+function normalizeProvider(value, fallback) {
+    const provider = typeof value === 'string' ? value.trim() : '';
+    return provider || fallback;
 }
 
 async function readSettings(env = process.env) {

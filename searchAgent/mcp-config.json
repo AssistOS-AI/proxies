@@ -11,9 +11,9 @@
       "inputSchema": {
         "provider": {
           "type": "string",
-          "description": "Search provider key.",
+          "description": "Optional SearchAgent provider override. Defaults to the provider saved in SearchAgent settings.",
           "minLength": 1,
-          "optional": false
+          "optional": true
         },
         "query": {
           "type": "string",
@@ -76,6 +76,12 @@
           "description": "Maximum accepted query length.",
           "minimum": 1,
           "maximum": 20000,
+          "optional": true
+        },
+        "currentProvider": {
+          "type": "string",
+          "description": "Default SearchAgent provider used when search calls omit provider.",
+          "minLength": 1,
           "optional": true
         },
         "additionalProperties": false

@@ -5,6 +5,22 @@
   "readiness": {
     "protocol": "mcp"
   },
+  "endpoints": {
+    "agent-card": {
+      "summary": "Normalized web search provider agent.",
+      "description": "Runs web search through SearchAgent providers and returns normalized result payloads.",
+      "whenToUse": "Use for web search, provider-backed retrieval, GPTResearcher web lookups, or OpenAI-compatible search calls.",
+      "inputConventions": "MCP uses query and optional maxResults; provider is optional and defaults to SearchAgent settings. Chat completions use the latest user message as query.",
+      "outputConventions": "Search results are normalized to JSON with ok, results, and provider metadata. Chat completions return that payload serialized as assistant text.",
+      "tags": ["search", "web", "retrieval", "openai-compatible"]
+    },
+    "chatCompletions": {
+      "command": "/usr/local/bin/node",
+      "args": ["/code/openai-api/chat-completions.mjs"],
+      "cwd": "/code",
+      "supportsStream": true
+    }
+  },
   "health": {
     "readiness": {
       "script": "readiness.sh",

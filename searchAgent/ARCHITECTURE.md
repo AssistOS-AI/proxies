@@ -4,7 +4,7 @@
 
 SearchAgent is a Ploinky MCP-first agent for normalized web search. It hides provider-specific response shapes and returns search results with stable `title`, `url`, and `snippet` fields while preserving useful provider-specific fields.
 
-GPTResearcher uses SearchAgent for web search through router-mediated agent-to-agent MCP calls. SearchAgent no longer exposes a custom HTTP service or classic `/services/search-agent/*` endpoints.
+GPTResearcher uses SearchAgent for web search through router-mediated agent-to-agent MCP calls. SearchAgent also exposes the bundled AgentServer's OpenAI-compatible `/v1/chat/completions` endpoint for clients that can only call chat-completion APIs. SearchAgent no longer exposes a custom HTTP service or classic `/services/search-agent/*` endpoints.
 
 ## Runtime
 
@@ -25,7 +25,6 @@ Search input:
 
 ```json
 {
-  "provider": "duckduckgo",
   "query": "search query",
   "maxResults": 5
 }
@@ -36,9 +35,29 @@ Successful search output:
 ```json
 {
   "ok": true,
+  "provider": "searxng",
   "results": []
 }
 ```
+
+## OpenAI Chat Completions Endpoint
+
+`manifest.json` declares `endpoints.chatCompletions`, handled by `openai-api/chat-completions.mjs`. The endpoint uses the provider configured in SearchAgent settings.
+
+Chat-completions input:
+
+```json
+{
+  "model": "proxies/searchAgent",
+  "messages": [
+    { "role": "user", "content": "search query" }
+  ]
+}
+```
+
+The handler extracts the latest user prompt as `query`, calls `search_agent_search` behavior with `maxResults: 10`, and returns an OpenAI chat-completion object. The assistant message content is a text string containing `JSON.stringify(...)` of the search payload, including `provider`, `query`, `maxResults`, `ok`, and `results`.
+
+Streaming requests are supported by emitting the same serialized search payload as a single OpenAI SSE text delta followed by `[DONE]`.
 
 ## Settings And Secrets
 
@@ -53,11 +72,12 @@ The file contains only:
 ```json
 {
   "maxResults": 20,
-  "maxQueryChars": 4000
+  "maxQueryChars": 4000,
+  "currentProvider": "searxng"
 }
 ```
 
-`maxResults` is normalized between `1` and `100`. `maxQueryChars` is normalized between `1` and `20000`.
+`maxResults` is normalized between `1` and `100`. `maxQueryChars` is normalized between `1` and `20000`. `currentProvider` defaults to `searxng` and is used when callers omit a provider.
 
 SearXNG has no user-configurable SearchAgent settings. Runtime startup only needs:
 
@@ -126,7 +146,7 @@ Provider listing returns only providers that are ready to use. Local `searxng` i
 For `search_agent_search`, `tools/search.mjs`:
 
 1. Reads non-secret settings.
-2. Validates `provider` and `query`.
+2. Validates `query` and resolves `provider` from the request override or `currentProvider`.
 3. Applies `maxQueryChars` and `maxResults`.
 4. Loads only the DPU secrets required by the selected provider.
 5. Calls the provider implementation.

@@ -35,16 +35,83 @@ async function runSearchTool(input, options = {}) {
     return runNodeTool('../tools/search.mjs', input, options);
 }
 
+async function runChatCompletionsTool(request, options = {}) {
+    return runNodeTool('../openai-api/chat-completions.mjs', { request }, options);
+}
+
+function parseChatCompletionContent(payload) {
+    return JSON.parse(payload.choices[0].message.content);
+}
+
 test('search tool rejects missing provider or query', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-missing-input-'));
     try {
-        const result = await runSearchTool({ provider: 'duckduckgo' }, { env: { HOME: dir } });
+        const result = await runSearchTool({}, { env: { HOME: dir } });
         assert.equal(result.code, 1);
         assert.equal(result.payload.ok, false);
-        assert.match(result.payload.error.message, /provider and query are required/);
+        assert.match(result.payload.error.message, /query is required/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
+});
+
+test('chat completions endpoint uses configured provider and latest user prompt as query', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-chat-completions-'));
+    const fetchMock = new URL('./fixtures/mock-duckduckgo-fetch.mjs', import.meta.url).pathname;
+    try {
+        await runNodeTool('../tools/update-settings.mjs', {
+            currentProvider: 'duckduckgo',
+        }, {
+            env: { HOME: dir },
+        });
+        const result = await runChatCompletionsTool({
+            model: 'proxies/searchAgent',
+            messages: [
+                { role: 'system', content: 'Search only.' },
+                { role: 'user', content: 'old query' },
+                { role: 'assistant', content: 'previous response' },
+                { role: 'user', content: 'example' },
+            ],
+        }, {
+            env: { HOME: dir },
+            fetchMock,
+        });
+
+        assert.equal(result.code, 0);
+        assert.equal(result.payload.object, 'chat.completion');
+        assert.equal(result.payload.model, 'proxies/searchAgent');
+        assert.equal(result.payload.choices[0].message.role, 'assistant');
+        assert.equal(typeof result.payload.choices[0].message.content, 'string');
+
+        const content = parseChatCompletionContent(result.payload);
+        assert.equal(content.ok, true);
+        assert.equal(content.provider, 'duckduckgo');
+        assert.equal(content.query, 'example');
+        assert.equal(content.maxResults, 10);
+        assert.deepEqual(content.results, [
+            {
+                title: 'Example result',
+                url: 'https://example.com/result',
+                snippet: 'Example result - useful snippet',
+            },
+        ]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('chat completions endpoint returns text JSON errors for invalid chat requests', async () => {
+    const result = await runChatCompletionsTool({
+        model: 'proxies/searchAgent',
+        messages: [],
+    });
+
+    assert.equal(result.code, 0);
+    assert.equal(result.payload.object, 'chat.completion');
+    assert.equal(result.payload.model, 'proxies/searchAgent');
+    const content = parseChatCompletionContent(result.payload);
+    assert.equal(content.ok, false);
+    assert.match(content.error.message, /user prompt is required/);
 });
 
 test('list-providers tool only includes providers ready to use', async () => {
@@ -130,6 +197,7 @@ test('search tool returns normalized results from duckduckgo provider', async ()
         assert.equal(result.code, 0);
         assert.deepEqual(result.payload, {
             ok: true,
+            provider: 'duckduckgo',
             results: [
                 {
                     title: 'Example result',
@@ -138,6 +206,36 @@ test('search tool returns normalized results from duckduckgo provider', async ()
                 },
             ],
         });
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool uses current provider from settings when provider is omitted', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-current-provider-'));
+    const fetchMock = new URL('./fixtures/mock-duckduckgo-fetch.mjs', import.meta.url).pathname;
+    try {
+        await runNodeTool('../tools/update-settings.mjs', {
+            currentProvider: 'duckduckgo',
+        }, {
+            env: { HOME: dir },
+        });
+        const result = await runSearchTool({
+            query: 'example',
+            maxResults: 5,
+        }, {
+            env: { HOME: dir },
+            fetchMock,
+        });
+
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload.results, [
+            {
+                title: 'Example result',
+                url: 'https://example.com/result',
+                snippet: 'Example result - useful snippet',
+            },
+        ]);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -190,6 +288,7 @@ test('search tool uses local SearXNG JSON API', async () => {
         assert.equal(result.code, 0);
         assert.deepEqual(result.payload, {
             ok: true,
+            provider: 'searxng',
             results: [
                 {
                     title: 'SearXNG result',

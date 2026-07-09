@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 import { SearchAgentError } from '../src/lib/errors.mjs';
 import { durationSince, logEvent, nowMs } from '../src/lib/logging.mjs';
@@ -11,6 +12,7 @@ import { providerMap } from '../src/providers/registry.mjs';
 const DEFAULT_SETTINGS = Object.freeze({
     maxResults: 20,
     maxQueryChars: 4000,
+    currentProvider: 'searxng',
 });
 
 function resolveSearchConfig() {
@@ -39,6 +41,7 @@ function normalizeSettings(value = {}) {
     return {
         maxResults: normalizeInteger(input.maxResults, DEFAULT_SETTINGS.maxResults, 1, 100),
         maxQueryChars: normalizeInteger(input.maxQueryChars, DEFAULT_SETTINGS.maxQueryChars, 1, 20000),
+        currentProvider: normalizeProvider(input.currentProvider, DEFAULT_SETTINGS.currentProvider),
     };
 }
 
@@ -101,7 +104,7 @@ async function handleSearch(body, {
             status: 'ok',
         }, { env });
 
-        return { ok: true, results };
+        return { ok: true, provider: input.provider, results };
     } catch (error) {
         logEvent('search_error', {
             provider: input?.provider || normalizeProviderForLog(body),
@@ -116,12 +119,16 @@ async function handleSearch(body, {
     }
 }
 
+function isMainModule() {
+    return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+}
+
 function normalizeSearchRequest(body, config = resolveSearchConfig(), settings = {}) {
-    const provider = typeof body?.provider === 'string' ? body.provider.trim() : '';
+    const provider = normalizeProvider(body?.provider, settings.currentProvider || DEFAULT_SETTINGS.currentProvider);
     const query = typeof body?.query === 'string' ? body.query.trim() : '';
 
-    if (!provider || !query) {
-        throw new SearchAgentError('INVALID_REQUEST', 'provider and query are required.', 400, false);
+    if (!query) {
+        throw new SearchAgentError('INVALID_REQUEST', 'query is required.', 400, false);
     }
 
     const maxQueryChars = settings.maxQueryChars || config.maxQueryChars;
@@ -148,6 +155,11 @@ function normalizeMaxResults(value, maxResults) {
     return Math.max(1, Math.min(maxResults, parsed));
 }
 
+function normalizeProvider(value, fallback) {
+    const provider = typeof value === 'string' ? value.trim() : '';
+    return provider || fallback;
+}
+
 function parseInteger(value, fallback) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -163,4 +175,8 @@ function normalizeQueryLengthForLog(body) {
     return typeof body?.query === 'string' ? body.query.trim().length : null;
 }
 
-await runToolSafe((input) => handleSearch(input));
+if (isMainModule()) {
+    await runToolSafe((input) => handleSearch(input));
+}
+
+export { handleSearch };
