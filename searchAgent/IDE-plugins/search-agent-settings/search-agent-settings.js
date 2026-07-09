@@ -11,7 +11,8 @@ const SECRET_KEYS = Object.freeze([
     'BRAVE_API_KEY',
     'EXA_API_KEY',
     'SERPER_API_KEY',
-    'JINA_API_KEY'
+    'JINA_API_KEY',
+    'GEMINI_API_KEY'
 ]);
 
 function normalizeInteger(value, fallback, min, max) {

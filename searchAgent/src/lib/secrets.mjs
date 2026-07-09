@@ -4,6 +4,7 @@ const PROVIDER_SECRET_KEYS = Object.freeze([
     'EXA_API_KEY',
     'SERPER_API_KEY',
     'JINA_API_KEY',
+    'GEMINI_API_KEY',
 ]);
 
 let cachedDpuClient = null;
@@ -67,10 +68,19 @@ export async function loadProviderSecretEnv({ env = process.env, dpuClient = nul
     const output = { ...env };
     const missingKeys = requiredKeys.filter((key) => !(typeof output[key] === 'string' && output[key]));
     if (!missingKeys.length) return output;
-    const client = dpuClient || await getDpuClient();
+    let client;
+    try {
+        client = dpuClient || await getDpuClient();
+    } catch {
+        return output;
+    }
     await Promise.all(missingKeys.map(async (key) => {
         if (typeof output[key] === 'string' && output[key]) return;
-        output[key] = await readDpuSecret(key, { dpuClient: client });
+        try {
+            output[key] = await readDpuSecret(key, { dpuClient: client });
+        } catch {
+            output[key] = '';
+        }
     }));
     return output;
 }

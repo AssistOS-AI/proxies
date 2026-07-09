@@ -8,7 +8,7 @@ GPTResearcher uses SearchAgent for web search through router-mediated agent-to-a
 
 ## Runtime
 
-The agent starts a local SearXNG process for the `searxng` provider and then starts the bundled Ploinky AgentServer. The install hook follows SearXNG's step-by-step installation shape inside the container: clone to `/usr/local/searxng/searxng-src`, install into `/usr/local/searxng/searx-pyenv`, and preinstall the documented build dependencies. SearXNG uses a minimal generated `$HOME/searxng/settings.yml` and otherwise relies on SearXNG defaults. `manifest.json` declares MCP readiness and does not define TCP readiness, `httpServices`, or provider API keys.
+The agent starts a local SearXNG process for the `searxng` provider, auto-starts a local Google AI Mode browser-pool sidecar when Chromium and `puppeteer-core` are available, and then starts the bundled Ploinky AgentServer. The install hook follows SearXNG's step-by-step installation shape inside the container: clone to `/usr/local/searxng/searxng-src`, install into `/usr/local/searxng/searx-pyenv`, and preinstall the documented build dependencies. SearXNG uses a minimal generated `$HOME/searxng/settings.yml` and otherwise relies on SearXNG defaults. The same install hook installs Chromium and `puppeteer-core` for the optional `google-ai-mode` provider. `manifest.json` declares MCP readiness and does not define TCP readiness, `httpServices`, or provider API keys.
 
 The MCP surface is declared in `mcp-config.json`. Tool handlers live in `tools/` and own the core business logic for search, provider listing, and settings. Shared code in `src/lib/` is limited to cross-tool plumbing such as DPU secret access, tool I/O, errors, and result normalization.
 
@@ -98,8 +98,9 @@ Secret keys are the provider environment names:
 - `EXA_API_KEY`
 - `SERPER_API_KEY`
 - `JINA_API_KEY`
+- `GEMINI_API_KEY`
 
-`duckduckgo` and local `searxng` require no secret. `jina` can work without `JINA_API_KEY`, but uses it when configured.
+`duckduckgo`, local `searxng`, `deep-research`, and `google-ai-mode` require no provider API secret. `jina` can work without `JINA_API_KEY`, but uses it when configured. `google-ai-mode` is auto-configured by the install/start hooks when Chromium and `puppeteer-core` are present. `BROWSER_EXECUTABLE_PATH`, `BROWSER_POOL_PORT`, `BROWSER_POOL_SIZE`, `BROWSER_HEADLESS_MODE`, `BROWSER_PROXY_URL`, and `BROWSER_USER_DATA_DIR` remain optional runtime overrides.
 
 ## Providers
 
@@ -112,8 +113,13 @@ Providers are registered by the MCP tool entrypoints in `tools/search.mjs` and `
 - `serper`
 - `searxng`
 - `jina`
+- `gemini`
+- `deep-research`
+- `google-ai-mode`
 
-Provider listing returns only providers that are ready to use. Local `searxng` is ready after the SearchAgent install hook has installed SearXNG and startup has made its JSON API available on `127.0.0.1:8888`.
+Provider listing returns only providers that are ready to use. Local `searxng` is ready after the SearchAgent install hook has installed SearXNG and startup has made its JSON API available on `127.0.0.1:8888`. `google-ai-mode` is ready when the browser-pool sidecar can be started and reached on `127.0.0.1:${BROWSER_POOL_PORT:-8890}`.
+
+`deep-research` is a provider value for `search_agent_search`, not a separate tool. It queries configured API providers from `DEEP_RESEARCH_PROVIDERS` or the default API provider list, skips providers without required secrets, tolerates per-provider failures, deduplicates by URL, and returns normalized results.
 
 ## Search Flow
 
@@ -127,6 +133,12 @@ For `search_agent_search`, `tools/search.mjs`:
 6. Returns normalized results.
 
 SearchAgent does not semantically rewrite queries. Individual providers may apply provider-specific constraints, such as Tavily's query length limit.
+
+## Runtime Logs
+
+SearchAgent writes operational JSON-line logs to `stderr`, so MCP tool payloads on `stdout` stay valid JSON. Logs include metadata such as provider, query length, requested result limit, returned result count, duration, error code, and retryability. They intentionally do not include raw query text, result titles, snippets, URLs, or provider secrets by default.
+
+`deep-research` logs selected providers and providers skipped because they are unknown or missing required secrets. `google-ai-mode` logs browser-pool startup, pool acquisition, search completion, failures, and CAPTCHA/rate-limit detection. Set `SEARCH_AGENT_LOGS=0` to disable these structured logs.
 
 ## Errors
 

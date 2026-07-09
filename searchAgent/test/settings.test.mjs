@@ -78,6 +78,7 @@ test('update-settings and get-settings tools persist through the home path', asy
             EXA_API_KEY: '',
             SERPER_API_KEY: '',
             JINA_API_KEY: '',
+            GEMINI_API_KEY: '',
         });
         assert.match(await readFile(path.join(dir, 'search-agent-settings.json'), 'utf8'), /maxResults/);
     } finally {
@@ -95,6 +96,11 @@ test('get-settings tool requires HOME for settings storage', async () => {
 test('settings UI does not expose local SearXNG as a secret field', async () => {
     const source = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.js', import.meta.url), 'utf8');
     assert.ok(!source.includes('SEARXNG_URL'));
+});
+
+test('settings UI includes Gemini as a provider secret field', async () => {
+    const source = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.js', import.meta.url), 'utf8');
+    assert.match(source, /GEMINI_API_KEY/);
 });
 
 test('settings backend builds API key hints without exposing raw keys to UI', () => {

@@ -20,6 +20,7 @@ if command -v apt-get >/dev/null 2>&1; then
         libxslt1-dev \
         libyaml-dev \
         pkg-config \
+        chromium \
         python3-babel \
         python-is-python3 \
         python3 \
@@ -45,5 +46,9 @@ fi
 "${SEARXNG_VENV}/bin/python" -m pip install --upgrade pyyaml msgspec typing-extensions pybind11
 cd "${SEARXNG_CLONE_DIR}"
 "${SEARXNG_VENV}/bin/python" -m pip install --use-pep517 --no-build-isolation -e .
+
+if [ -f /code/package.json ]; then
+    env NODE_OPTIONS= npm install --omit=dev --prefix /code
+fi
 
 node /code/scripts/configure-searxng-settings.mjs

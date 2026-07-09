@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -54,6 +55,8 @@ test('list-providers tool only includes providers ready to use', async () => {
             EXA_API_KEY: 'test-key',
             SERPER_API_KEY: 'test-key',
             JINA_API_KEY: 'test-key',
+            GEMINI_API_KEY: 'test-key',
+            GOOGLE_AI_MODE_DISABLED: '1',
         },
     });
     assert.equal(result.code, 0);
@@ -88,6 +91,15 @@ test('list-providers tool only includes providers ready to use', async () => {
         provider: 'serper',
         name: 'Serper',
     });
+    assert.deepEqual(byProvider.get('gemini'), {
+        provider: 'gemini',
+        name: 'Gemini Search',
+    });
+    assert.deepEqual(byProvider.get('deep-research'), {
+        provider: 'deep-research',
+        name: 'Deep Research',
+    });
+    assert.equal(byProvider.has('google-ai-mode'), false);
 });
 
 test('search tool rejects unknown provider', async () => {
@@ -126,6 +138,37 @@ test('search tool returns normalized results from duckduckgo provider', async ()
                 },
             ],
         });
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool writes metadata logs to stderr without raw query text', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-search-logs-'));
+    const fetchMock = new URL('./fixtures/mock-duckduckgo-fetch.mjs', import.meta.url).pathname;
+    const query = 'private customer query';
+    try {
+        const result = await runSearchTool({
+            provider: 'duckduckgo',
+            query,
+            maxResults: 5,
+        }, {
+            env: { HOME: dir },
+            fetchMock,
+        });
+
+        assert.equal(result.code, 0);
+        assert.equal(result.stderr.includes(query), false);
+        const logs = result.stderr
+            .trim()
+            .split('\n')
+            .filter(Boolean)
+            .map((line) => JSON.parse(line));
+        assert.deepEqual(logs.map((entry) => entry.event), ['search_start', 'search_finish']);
+        assert.equal(logs[0].provider, 'duckduckgo');
+        assert.equal(logs[0].queryLength, query.length);
+        assert.equal(logs[1].resultCount, 1);
+        assert.equal(typeof logs[1].durationMs, 'number');
     } finally {
         await rm(dir, { recursive: true, force: true });
     }
@@ -222,6 +265,149 @@ test('search tool limits Tavily provider query length', async () => {
                 observedQueryLength: 400,
             },
         ]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool returns normalized results from Gemini grounding provider', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-gemini-'));
+    const fetchMock = new URL('./fixtures/mock-gemini-fetch.mjs', import.meta.url).pathname;
+    try {
+        const result = await runSearchTool({
+            provider: 'gemini',
+            query: 'grounded answer',
+            maxResults: 5,
+        }, {
+            env: {
+                HOME: dir,
+                GEMINI_API_KEY: 'test-key',
+            },
+            fetchMock,
+        });
+
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload.results, [
+            {
+                title: 'Gemini source',
+                url: 'https://example.com/gemini',
+                snippet: 'Grounded Gemini snippet',
+            },
+        ]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool runs deep-research as a provider and deduplicates results', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-deep-research-'));
+    const fetchMock = new URL('./fixtures/mock-deep-research-fetch.mjs', import.meta.url).pathname;
+    try {
+        const result = await runSearchTool({
+            provider: 'deep-research',
+            query: 'aggregate this',
+            maxResults: 5,
+        }, {
+            env: {
+                HOME: dir,
+                DEEP_RESEARCH_PROVIDERS: 'tavily,brave',
+                TAVILY_API_KEY: 'test-key',
+                BRAVE_API_KEY: 'test-key',
+            },
+            fetchMock,
+        });
+
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload.results, [
+            {
+                title: 'Shared result',
+                url: 'https://example.com/shared',
+                snippet: 'Tavily saw aggregate this',
+                content: 'Tavily saw aggregate this',
+                sourceProvider: 'tavily',
+            },
+            {
+                title: 'Brave unique',
+                url: 'https://example.com/brave',
+                snippet: 'Brave unique snippet',
+                description: 'Brave unique snippet',
+                sourceProvider: 'brave',
+            },
+        ]);
+    } finally {
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool uses Google AI Mode browser pool provider', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-google-ai-mode-pool-'));
+    const server = createServer((request, response) => {
+        assert.equal(request.method, 'POST');
+        assert.equal(request.url, '/search/google-ai-mode');
+        let raw = '';
+        request.setEncoding('utf8');
+        request.on('data', (chunk) => {
+            raw += chunk;
+        });
+        request.on('end', () => {
+            const body = JSON.parse(raw);
+            assert.equal(body.query, 'browser search');
+            response.writeHead(200, { 'content-type': 'application/json' });
+            response.end(JSON.stringify({
+                ok: true,
+                results: [{
+                    title: 'AI Mode result',
+                    url: 'https://example.com/ai-mode',
+                    snippet: 'AI Mode snippet',
+                }],
+            }));
+        });
+    });
+
+    try {
+        await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const { port } = server.address();
+        const result = await runSearchTool({
+            provider: 'google-ai-mode',
+            query: 'browser search',
+            maxResults: 5,
+        }, {
+            env: {
+                HOME: dir,
+                GOOGLE_AI_MODE_POOL_URL: `http://127.0.0.1:${port}`,
+            },
+        });
+
+        assert.equal(result.code, 0);
+        assert.deepEqual(result.payload.results, [{
+            title: 'AI Mode result',
+            url: 'https://example.com/ai-mode',
+            snippet: 'AI Mode snippet',
+        }]);
+    } finally {
+        await new Promise((resolve) => server.close(resolve));
+        await rm(dir, { recursive: true, force: true });
+    }
+});
+
+test('search tool reports google-ai-mode as not configured without a browser', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'search-agent-test-google-ai-mode-'));
+    try {
+        const result = await runSearchTool({
+            provider: 'google-ai-mode',
+            query: 'browser search',
+            maxResults: 5,
+        }, {
+            env: {
+                HOME: dir,
+                BROWSER_EXECUTABLE_PATH: '',
+                BROWSER_POOL_SIZE: '0',
+            },
+        });
+
+        assert.equal(result.code, 1);
+        assert.equal(result.payload.error.code, 'PROVIDER_NOT_CONFIGURED');
+        assert.match(result.payload.error.message, /BROWSER_EXECUTABLE_PATH|Chromium|puppeteer-core/);
     } finally {
         await rm(dir, { recursive: true, force: true });
     }

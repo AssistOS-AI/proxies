@@ -3,32 +3,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import { SearchAgentError } from '../src/lib/errors.mjs';
+import { durationSince, logEvent, nowMs } from '../src/lib/logging.mjs';
 import { loadProviderSecretEnv } from '../src/lib/secrets.mjs';
 import { runToolSafe } from '../src/lib/tool-io.mjs';
-import { provider as brave } from '../src/providers/brave.mjs';
-import { provider as duckduckgo } from '../src/providers/duckduckgo.mjs';
-import { provider as exa } from '../src/providers/exa.mjs';
-import { provider as jina } from '../src/providers/jina.mjs';
-import { provider as searxng } from '../src/providers/searxng.mjs';
-import { provider as serper } from '../src/providers/serper.mjs';
-import { provider as tavily } from '../src/providers/tavily.mjs';
+import { providerMap } from '../src/providers/registry.mjs';
 
 const DEFAULT_SETTINGS = Object.freeze({
     maxResults: 20,
     maxQueryChars: 4000,
 });
-
-const providers = Object.freeze([
-    duckduckgo,
-    tavily,
-    brave,
-    exa,
-    serper,
-    searxng,
-    jina,
-]);
-
-const providerMap = new Map(providers.map((provider) => [provider.key, provider]));
 
 function resolveSearchConfig() {
     return {
@@ -77,26 +60,60 @@ async function handleSearch(body, {
     config = resolveSearchConfig(),
     dpuClient = null,
 } = {}) {
-    const settings = await readSettings(env);
-    const input = normalizeSearchRequest(body, config, settings);
-    const provider = providerMap.get(input.provider);
-    if (!provider) {
-        throw new SearchAgentError('UNKNOWN_PROVIDER', 'Unknown search provider.', 404, false);
+    const startedAt = nowMs();
+    let input = null;
+    let provider = null;
+    let secretKeys = [];
+    try {
+        const settings = await readSettings(env);
+        input = normalizeSearchRequest(body, config, settings);
+        provider = providerMap.get(input.provider);
+        if (!provider) {
+            throw new SearchAgentError('UNKNOWN_PROVIDER', 'Unknown search provider.', 404, false);
+        }
+
+        secretKeys = [...(provider.requires || []), ...(provider.optionalSecrets || [])];
+        logEvent('search_start', {
+            provider: input.provider,
+            queryLength: input.query.length,
+            maxResults: input.maxResults,
+            secretKeysRequested: secretKeys.length,
+        }, { env });
+
+        const providerEnv = await loadProviderSecretEnv({
+            env,
+            dpuClient,
+            keys: secretKeys,
+        });
+        const results = await provider.search({
+            query: input.query,
+            maxResults: input.maxResults,
+            env: providerEnv,
+            fetchImpl,
+        });
+
+        logEvent('search_finish', {
+            provider: input.provider,
+            queryLength: input.query.length,
+            maxResults: input.maxResults,
+            resultCount: Array.isArray(results) ? results.length : 0,
+            durationMs: durationSince(startedAt),
+            status: 'ok',
+        }, { env });
+
+        return { ok: true, results };
+    } catch (error) {
+        logEvent('search_error', {
+            provider: input?.provider || normalizeProviderForLog(body),
+            queryLength: input?.query?.length ?? normalizeQueryLengthForLog(body),
+            maxResults: input?.maxResults,
+            durationMs: durationSince(startedAt),
+            status: 'error',
+            errorCode: error?.code || 'SEARCH_AGENT_TOOL_FAILED',
+            retryable: Boolean(error?.retryable),
+        }, { env });
+        throw error;
     }
-
-    const providerEnv = await loadProviderSecretEnv({
-        env,
-        dpuClient,
-        keys: [...(provider.requires || []), ...(provider.optionalSecrets || [])],
-    });
-    const results = await provider.search({
-        query: input.query,
-        maxResults: input.maxResults,
-        env: providerEnv,
-        fetchImpl,
-    });
-
-    return { ok: true, results };
 }
 
 function normalizeSearchRequest(body, config = resolveSearchConfig(), settings = {}) {
@@ -134,6 +151,16 @@ function normalizeMaxResults(value, maxResults) {
 function parseInteger(value, fallback) {
     const parsed = Number.parseInt(String(value ?? ''), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizeProviderForLog(body) {
+    return typeof body?.provider === 'string' && body.provider.trim()
+        ? body.provider.trim()
+        : null;
+}
+
+function normalizeQueryLengthForLog(body) {
+    return typeof body?.query === 'string' ? body.query.trim().length : null;
 }
 
 await runToolSafe((input) => handleSearch(input));
