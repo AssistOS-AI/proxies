@@ -1,7 +1,6 @@
 const DEFAULT_SETTINGS = Object.freeze({
     maxResults: 20,
-    maxQueryChars: 4000,
-    currentProvider: 'searxng'
+    maxQueryChars: 4000
 });
 
 const LOG_PREFIX = '[SearchAgent Settings]';
@@ -36,8 +35,7 @@ function normalizeSettings(value = {}) {
             DEFAULT_SETTINGS.maxQueryChars,
             1,
             20000
-        ),
-        currentProvider: trim(input.currentProvider) || DEFAULT_SETTINGS.currentProvider
+        )
     };
 }
 
@@ -86,7 +84,6 @@ export class SearchAgentSettings {
         this.invalidate = invalidate;
         this.state = {
             settings: normalizeSettings(),
-            providers: [],
             secrets: new Map(),
             status: '',
             statusType: ''
@@ -109,7 +106,6 @@ export class SearchAgentSettings {
 
     cacheElements() {
         this.inputs = {
-            currentProvider: this.element.querySelector('#sagCurrentProvider'),
             maxResults: this.element.querySelector('#sagMaxResults'),
             maxQueryChars: this.element.querySelector('#sagMaxQueryChars')
         };
@@ -120,44 +116,19 @@ export class SearchAgentSettings {
 
     syncInputsFromState() {
         const settings = normalizeSettings(this.state.settings);
-        this.renderProviderOptions();
         if (this.inputs?.maxResults) {
             this.inputs.maxResults.value = String(settings.maxResults);
         }
         if (this.inputs?.maxQueryChars) {
             this.inputs.maxQueryChars.value = String(settings.maxQueryChars);
         }
-        if (this.inputs?.currentProvider) {
-            this.inputs.currentProvider.value = settings.currentProvider;
-        }
     }
 
     collectSettingsFromInputs() {
         return normalizeSettings({
-            currentProvider: this.inputs?.currentProvider?.value,
             maxResults: this.inputs?.maxResults?.value,
             maxQueryChars: this.inputs?.maxQueryChars?.value
         });
-    }
-
-    renderProviderOptions() {
-        const select = this.inputs?.currentProvider;
-        if (!select) return;
-        const settings = normalizeSettings(this.state.settings);
-        const providers = Array.isArray(this.state.providers) ? this.state.providers : [];
-        const options = new Map();
-        options.set(settings.currentProvider, settings.currentProvider);
-        for (const provider of providers) {
-            const key = trim(provider?.provider || provider?.id || provider?.key);
-            if (!key) continue;
-            options.set(key, trim(provider?.name || provider?.label) || key);
-        }
-        select.replaceChildren(...Array.from(options.entries()).map(([key, label]) => {
-            const option = document.createElement('option');
-            option.value = key;
-            option.textContent = label === key ? key : `${label} (${key})`;
-            return option;
-        }));
     }
 
     setStatus(message, type = '') {
@@ -310,9 +281,7 @@ export class SearchAgentSettings {
         this.setStatus('Loading...');
         try {
             const payload = await this.callSearchAgent('search_agent_get_settings', {});
-            const providersPayload = await this.callSearchAgent('search_agent_list_providers', {});
             this.state.settings = normalizeSettings(payload.settings);
-            this.state.providers = Array.isArray(providersPayload.providers) ? providersPayload.providers : [];
             this.syncInputsFromState();
             this.reloadSecretHints(payload.secrets);
             this.setStatus('');

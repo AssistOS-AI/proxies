@@ -3,7 +3,7 @@
     {
       "name": "search_agent_search",
       "title": "SearchAgent Search",
-      "description": "Run a web search through a configured SearchAgent provider.",
+      "description": "Run a web search through a selected SearchAgent provider.",
       "command": "/usr/local/bin/node",
       "args": ["/code/tools/search.mjs"],
       "cwd": "/code",
@@ -11,9 +11,9 @@
       "inputSchema": {
         "provider": {
           "type": "string",
-          "description": "Optional SearchAgent provider override. Defaults to the provider saved in SearchAgent settings.",
+          "description": "SearchAgent provider to use.",
           "minLength": 1,
-          "optional": true
+          "optional": false
         },
         "query": {
           "type": "string",
@@ -28,18 +28,6 @@
           "maximum": 100,
           "optional": true
         },
-        "additionalProperties": false
-      }
-    },
-    {
-      "name": "search_agent_list_providers",
-      "title": "SearchAgent List Providers",
-      "description": "List SearchAgent providers that are ready to use.",
-      "command": "/usr/local/bin/node",
-      "args": ["/code/tools/list-providers.mjs"],
-      "cwd": "/code",
-      "timeoutMs": 30000,
-      "inputSchema": {
         "additionalProperties": false
       }
     },
@@ -76,12 +64,6 @@
           "description": "Maximum accepted query length.",
           "minimum": 1,
           "maximum": 20000,
-          "optional": true
-        },
-        "currentProvider": {
-          "type": "string",
-          "description": "Default SearchAgent provider used when search calls omit provider.",
-          "minLength": 1,
           "optional": true
         },
         "additionalProperties": false

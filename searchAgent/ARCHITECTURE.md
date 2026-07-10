@@ -4,20 +4,19 @@
 
 SearchAgent is a Ploinky MCP-first agent for normalized web search. It hides provider-specific response shapes and returns search results with stable `title`, `url`, and `snippet` fields while preserving useful provider-specific fields.
 
-GPTResearcher uses SearchAgent for web search through router-mediated agent-to-agent MCP calls. SearchAgent also exposes the bundled AgentServer's OpenAI-compatible `/v1/chat/completions` endpoint for clients that can only call chat-completion APIs. SearchAgent no longer exposes a custom HTTP service or classic `/services/search-agent/*` endpoints.
+GPTResearcher uses SearchAgent for web search through router-mediated agent-to-agent MCP calls. SearchAgent also exposes the bundled AgentServer's OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints for clients that can only call OpenAI-compatible APIs. SearchAgent no longer exposes a custom HTTP service or classic `/services/search-agent/*` endpoints.
 
 ## Runtime
 
 The agent starts a local SearXNG process for the `searxng` provider, auto-starts a local Google AI Mode browser-pool sidecar when Chromium and `puppeteer-core` are available, and then starts the bundled Ploinky AgentServer. The install hook follows SearXNG's step-by-step installation shape inside the container: clone to `/usr/local/searxng/searxng-src`, install into `/usr/local/searxng/searx-pyenv`, and preinstall the documented build dependencies. SearXNG uses a minimal generated `$HOME/searxng/settings.yml` and otherwise relies on SearXNG defaults. The same install hook installs Chromium and `puppeteer-core` for the optional `google-ai-mode` provider. `manifest.json` declares MCP readiness and does not define TCP readiness, `httpServices`, or provider API keys.
 
-The MCP surface is declared in `mcp-config.json`. Tool handlers live in `tools/` and own the core business logic for search, provider listing, and settings. Shared code in `src/lib/` is limited to cross-tool plumbing such as DPU secret access, tool I/O, errors, and result normalization.
+The MCP surface is declared in `mcp-config.json`. Tool handlers live in `tools/` and own the core business logic for search and settings. Shared code in `src/lib/` is limited to cross-tool plumbing such as DPU secret access, tool I/O, errors, and result normalization.
 
 ## MCP Tools
 
 SearchAgent exposes authenticated user tools:
 
 - `search_agent_search`: run a search through a selected provider.
-- `search_agent_list_providers`: list providers and configured-secret status.
 - `search_agent_get_settings`: read non-secret settings.
 - `search_agent_update_settings`: persist non-secret settings.
 
@@ -25,6 +24,7 @@ Search input:
 
 ```json
 {
+  "provider": "searxng",
   "query": "search query",
   "maxResults": 5
 }
@@ -42,13 +42,13 @@ Successful search output:
 
 ## OpenAI Chat Completions Endpoint
 
-`manifest.json` declares `endpoints.chatCompletions`, handled by `openai-api/chat-completions.mjs`. The endpoint uses the provider configured in SearchAgent settings.
+`manifest.json` declares `endpoints.chatCompletions`, handled by `openai-api/chat-completions.mjs`. The endpoint uses the request `model` as the SearchAgent provider key.
 
 Chat-completions input:
 
 ```json
 {
-  "model": "proxies/searchAgent",
+  "model": "searxng",
   "messages": [
     { "role": "user", "content": "search query" }
   ]
@@ -58,6 +58,12 @@ Chat-completions input:
 The handler extracts the latest user prompt as `query`, calls `search_agent_search` behavior with `maxResults: 10`, and returns an OpenAI chat-completion object. The assistant message content is a text string containing `JSON.stringify(...)` of the search payload, including `provider`, `query`, `maxResults`, `ok`, and `results`.
 
 Streaming requests are supported by emitting the same serialized search payload as a single OpenAI SSE text delta followed by `[DONE]`.
+
+## OpenAI Models Endpoint
+
+`manifest.json` declares `endpoints.models`, handled by `openai-api/models.mjs`. It returns an OpenAI-style model list for providers that are ready to use. Each SearchAgent provider is represented as a Soul Gateway model where `id`, `modelId`, and `providerModelId` are the provider key, for example `duckduckgo`, `searxng`, or `tavily`.
+
+Model descriptors use the single tag `search`, include capability metadata, include the active SearchAgent limits (`maxResults`, `maxQueryChars`), and emit Soul Gateway-compatible pricing metadata. Providers without required API-key secrets are marked `free`; providers with required API-key secrets are marked `external_directory`. Providers that require missing secrets are not returned.
 
 ## Settings And Secrets
 
@@ -72,12 +78,11 @@ The file contains only:
 ```json
 {
   "maxResults": 20,
-  "maxQueryChars": 4000,
-  "currentProvider": "searxng"
+  "maxQueryChars": 4000
 }
 ```
 
-`maxResults` is normalized between `1` and `100`. `maxQueryChars` is normalized between `1` and `20000`. `currentProvider` defaults to `searxng` and is used when callers omit a provider.
+`maxResults` is normalized between `1` and `100`. `maxQueryChars` is normalized between `1` and `20000`. Search provider selection is not stored in SearchAgent settings; callers must pass it explicitly.
 
 SearXNG has no user-configurable SearchAgent settings. Runtime startup only needs:
 
@@ -124,7 +129,7 @@ Secret keys are the provider environment names:
 
 ## Providers
 
-Providers are registered by the MCP tool entrypoints in `tools/search.mjs` and `tools/list-providers.mjs`:
+Providers are registered in `src/providers/registry.mjs`:
 
 - `duckduckgo`
 - `tavily`
@@ -137,7 +142,7 @@ Providers are registered by the MCP tool entrypoints in `tools/search.mjs` and `
 - `deep-research`
 - `google-ai-mode`
 
-Provider listing returns only providers that are ready to use. Local `searxng` is ready after the SearchAgent install hook has installed SearXNG and startup has made its JSON API available on `127.0.0.1:8888`. `google-ai-mode` is ready when the browser-pool sidecar can be started and reached on `127.0.0.1:${BROWSER_POOL_PORT:-8890}`.
+Provider model listing is exposed through `/v1/models`, not through an MCP tool. It returns only providers that are ready to use. Local `searxng` is ready after the SearchAgent install hook has installed SearXNG and startup has made its JSON API available on `127.0.0.1:8888`. `google-ai-mode` is ready when the browser-pool sidecar can be started and reached on `127.0.0.1:${BROWSER_POOL_PORT:-8890}`.
 
 `deep-research` is a provider value for `search_agent_search`, not a separate tool. It queries configured API providers from `DEEP_RESEARCH_PROVIDERS` or the default API provider list, skips providers without required secrets, tolerates per-provider failures, deduplicates by URL, and returns normalized results.
 
@@ -146,7 +151,7 @@ Provider listing returns only providers that are ready to use. Local `searxng` i
 For `search_agent_search`, `tools/search.mjs`:
 
 1. Reads non-secret settings.
-2. Validates `query` and resolves `provider` from the request override or `currentProvider`.
+2. Validates the request `provider` and `query`.
 3. Applies `maxQueryChars` and `maxResults`.
 4. Loads only the DPU secrets required by the selected provider.
 5. Calls the provider implementation.

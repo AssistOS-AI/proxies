@@ -115,7 +115,7 @@ function extractSearchRequest(payload) {
     return {
         query,
         maxResults: DEFAULT_MAX_RESULTS,
-        model: typeof request?.model === 'string' ? request.model.trim() : '',
+        provider: typeof request?.model === 'string' ? request.model.trim() : '',
     };
 }
 
@@ -143,18 +143,24 @@ function invalidSearchPayload(query, message) {
 }
 
 async function handleChatCompletions(payload) {
-    const { query, maxResults, model } = extractSearchRequest(payload);
+    const { query, maxResults, provider } = extractSearchRequest(payload);
 
     if (!query) {
         return openAiCompletion({
-            model,
+            model: provider,
             content: JSON.stringify(invalidSearchPayload(query, 'a user prompt is required as the search query.')),
+        });
+    }
+    if (!provider) {
+        return openAiCompletion({
+            model: provider,
+            content: JSON.stringify(invalidSearchPayload(query, 'model is required and must be a SearchAgent provider.')),
         });
     }
 
     let searchPayload;
     try {
-        searchPayload = await handleSearch({ query, maxResults });
+        searchPayload = await handleSearch({ provider, query, maxResults });
     } catch (error) {
         searchPayload = {
             ok: false,
@@ -169,7 +175,7 @@ async function handleChatCompletions(payload) {
     }
 
     return openAiCompletion({
-        model,
+        model: provider,
         content: JSON.stringify({
             query,
             maxResults,

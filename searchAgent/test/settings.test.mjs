@@ -48,7 +48,6 @@ test('update-settings tool normalizes persisted search settings', async () => {
         assert.deepEqual(result.payload.settings, {
             maxResults: 100,
             maxQueryChars: 1,
-            currentProvider: 'searxng',
         });
     } finally {
         await rm(dir, { recursive: true, force: true });
@@ -61,7 +60,6 @@ test('update-settings and get-settings tools persist through the home path', asy
         const update = await runTool('../tools/update-settings.mjs', {
             maxResults: 12,
             maxQueryChars: 900,
-            currentProvider: 'duckduckgo',
         }, {
             HOME: dir,
         });
@@ -69,7 +67,6 @@ test('update-settings and get-settings tools persist through the home path', asy
         assert.deepEqual(update.payload.settings, {
             maxResults: 12,
             maxQueryChars: 900,
-            currentProvider: 'duckduckgo',
         });
 
         const get = await runTool('../tools/get-settings.mjs', {}, { HOME: dir });
@@ -106,12 +103,13 @@ test('settings UI includes Gemini as a provider secret field', async () => {
     assert.match(source, /GEMINI_API_KEY/);
 });
 
-test('settings UI includes current provider control', async () => {
+test('settings UI does not include current provider control', async () => {
     const html = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.html', import.meta.url), 'utf8');
     const source = await readFile(new URL('../IDE-plugins/search-agent-settings/search-agent-settings.js', import.meta.url), 'utf8');
-    assert.match(html, /sagCurrentProvider/);
-    assert.match(source, /currentProvider/);
-    assert.match(source, /search_agent_list_providers/);
+    assert.doesNotMatch(html, /sagCurrentProvider/);
+    assert.doesNotMatch(html, /Current provider/);
+    assert.doesNotMatch(source, /currentProvider/);
+    assert.doesNotMatch(source, /search_agent_list_providers/);
 });
 
 test('settings backend builds API key hints without exposing raw keys to UI', () => {
