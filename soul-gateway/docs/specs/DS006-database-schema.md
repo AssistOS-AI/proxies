@@ -58,7 +58,7 @@ The SQLite cutover intentionally starts from an empty database. Old Postgres dat
 
 ## Decisions & Questions
 
-1. 2026-06-24: Per `docs/superpowers/plans/2026-06-24-create-user-keys.md` and `docs/superpowers/specs/2026-06-24-create-user-keys-design.md`, admin-created user keys are represented only as `api_keys` policy rows for router-signed `user:<owner>:<name>` subjects. The row uses `subject_type='user'` and `source='signed-subject'`, stores no key material, and relies on the `subject_id` uniqueness invariant to enforce the burned-name rule for revoked user subjects.
+1. 2026-06-24: Admin-created user keys are represented only as `api_keys` policy rows for router-signed `user:<owner>:<name>` subjects. The row uses `subject_type='user'` and `source='signed-subject'`, stores no key material, and relies on the `subject_id` uniqueness invariant to enforce the burned-name rule for revoked user subjects.
 
 ## Related specs
 

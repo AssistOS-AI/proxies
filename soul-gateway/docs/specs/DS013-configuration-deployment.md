@@ -163,7 +163,7 @@ The router public health service is unauthenticated and has minimal overhead so 
 
 Soul Gateway management is protected by Ploinky's protected HTTP service identity. The gateway accepts only router-provided `x-ploinky-auth-info` plus a verified Ploinky router-request JWT signed with this agent's injected `PLOINKY_AGENT_SECRET`, and it requires the authenticated user to have the `admin` role.
 
-The removed Soul Gateway dashboard login/session endpoints return HTTP 410 with "use Ploinky login" semantics. `DASHBOARD_PASSWORD`, `ADMIN_SESSION_SIGNING_KEY`, `SOUL_GATEWAY_MODE`, and `TRUST_PLOINKY_ROUTER_AUTH` are deprecated compatibility inputs only; they are parsed for one release but do not control active behavior. Existing `soul_session` cookies are ignored.
+Soul Gateway has no dashboard login/session endpoints; unmatched requests follow the normal HTTP 404 path. `DASHBOARD_PASSWORD`, `ADMIN_SESSION_SIGNING_KEY`, `SOUL_GATEWAY_MODE`, and `TRUST_PLOINKY_ROUTER_AUTH` are deprecated compatibility inputs only; they are parsed for one release but do not control active behavior. Existing `soul_session` cookies are ignored.
 
 ## Graceful shutdown
 

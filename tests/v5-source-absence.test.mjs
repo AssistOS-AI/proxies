@@ -29,7 +29,6 @@ test('runtime-v5 active source omits retired edge-publication symbols', () => {
   }).split('\0').filter(Boolean);
   const violations = [];
   for (const relative of files) {
-    if (relative.startsWith('docs/superpowers/')) continue;
     const absolute = path.join(ROOT, relative);
     if (!fs.existsSync(absolute)) continue;
     const stat = fs.statSync(absolute);

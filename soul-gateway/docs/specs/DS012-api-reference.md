@@ -14,7 +14,7 @@ The dashboard shell served at `/management` loads its frontend entrypoint from `
 - Ploinky login is the only browser-facing admin login; Soul Gateway does not create dashboard sessions
 - management auth validates `x-ploinky-auth-info` plus the Ploinky router-request JWT and requires an admin role
 - dashboard cookies, bearer dashboard tokens, and caller-supplied identity headers are rejected as management auth
-- compatibility endpoints under `/management/auth/*` return HTTP 410 with instructions to use Ploinky login
+- Soul Gateway has no `/management/auth/*` endpoints; unmatched requests follow the normal HTTP 404 path
 - state-changing management requests do not require Soul Gateway CSRF tokens; the protected-service invocation JWT is the request binding
 - live-refresh behavior on data-backed tabs
 
@@ -147,7 +147,7 @@ Mutations that affect routing or policy trigger runtime refresh so later request
 
 ## Decisions & Questions
 
-1. 2026-06-24: Per `docs/superpowers/plans/2026-06-24-create-user-keys.md` and `docs/superpowers/specs/2026-06-24-create-user-keys-design.md`, `POST /management/keys` is the admin user-key provisioning endpoint, not an agent-key creation endpoint. It stores only signed-subject policy for `user:<owner>:<name>`, leaves minting to the Ploinky router, preserves non-revocable discovery-owned agent keys, and enforces the burned-name rule for revoked user subjects.
+1. 2026-06-24: `POST /management/keys` is the admin user-key provisioning endpoint, not an agent-key creation endpoint. It stores only signed-subject policy for `user:<owner>:<name>`, leaves minting to the Ploinky router, preserves non-revocable discovery-owned agent keys, and enforces the burned-name rule for revoked user subjects.
 2. 2026-06-27: The dashboard shows admin-created user keys only in the encoded `sk-soul-...` form returned by Ploinky. The gateway decodes that wrapper for verification and rejects raw user signed-subject bearer tokens.
 3. 2026-06-29: The management dashboard may prefill user-key ownership only from the server-verified `/management/me` response. Browser state is not an identity source, and the create-key API remains responsible for validating the explicit `subjectId`.
 

@@ -93,11 +93,11 @@ The management API writes model-scoped bindings into unified `middleware_binding
 
 ## Management auth boundary
 
-Soul Gateway does not own management login attempts or session issuance. Browser login throttling belongs to Ploinky's default auth surface. The removed `/management/auth/*` compatibility endpoints return HTTP 410 and do not participate in rate-limit or budget policy.
+Soul Gateway does not own management login attempts or session issuance. Browser login throttling belongs to Ploinky's default auth surface. Soul Gateway has no `/management/auth/*` endpoints; unmatched requests follow the normal HTTP 404 path and do not participate in rate-limit or budget policy.
 
 ## Decisions & Questions
 
-1. 2026-06-24: Per `docs/superpowers/plans/2026-06-24-create-user-keys.md` and `docs/superpowers/specs/2026-06-24-create-user-keys-design.md`, key lifecycle distinguishes admin-provisioned user keys from discovery-provisioned agent keys. User keys are revocable router-signed `user:<owner>:<name>` subjects with burned names after revocation; agent keys remain discovery-owned and non-revocable.
+1. 2026-06-24: Key lifecycle distinguishes admin-provisioned user keys from discovery-provisioned agent keys. User keys are revocable router-signed `user:<owner>:<name>` subjects with burned names after revocation; agent keys remain discovery-owned and non-revocable.
 2. 2026-06-27: User-facing API keys use the encoded `sk-soul-...` wrapper. Soul Gateway rejects raw user signed-subject bearer tokens while continuing to accept raw agent runtime keys.
 
 ## Related specs

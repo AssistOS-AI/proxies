@@ -29,7 +29,7 @@ Management auth accepts only verified Ploinky protected-service identity:
 3. Require `admin` in the Ploinky user's roles.
 4. Reject requests that rely only on Soul Gateway cookies, bearer dashboard tokens, or caller-supplied identity headers.
 
-The removed `/management/auth/*` endpoints return HTTP 410 with instructions to use Ploinky login. They never create or validate Soul Gateway sessions. Management writes do not require Soul Gateway CSRF tokens; the router invocation JWT is the request binding.
+Soul Gateway has no `/management/auth/*` endpoints; unmatched requests follow the normal HTTP 404 path. Management writes do not require Soul Gateway CSRF tokens; the router invocation JWT is the request binding.
 
 Soul Gateway preserves the verified Ploinky user from `x-ploinky-auth-info` on management route context and exposes a non-secret `GET /management/me` view. The keys dashboard uses `user.keyOwner` from that view to prefill the user API key owner. Soul Gateway does not infer ownership from browser state and does not accept an unauthenticated owner claim.
 
@@ -215,7 +215,7 @@ The dashboard has no Soul Gateway login form, no dashboard session token flow, a
 ## Decisions & Questions
 
 1. 2026-06-24: Ploinky's router-signed subject identity credential is the only local agent API key. Agents present `PLOINKY_AGENT_API_KEY`, Soul Gateway verifies with `PLOINKY_AGENT_API_PUBLIC_KEY`, and the former Soul Gateway-named compatibility alias is removed.
-2. 2026-06-24: Per `docs/superpowers/plans/2026-06-24-create-user-keys.md` and `docs/superpowers/specs/2026-06-24-create-user-keys-design.md`, admin-created user keys reuse Ploinky router signing while Soul Gateway only provisions policy for `user:<owner>:<name>` subjects. This does not change agent discovery, agent-key injection, or the non-revocable agent-key contract.
+2. 2026-06-24: Admin-created user keys reuse Ploinky router signing while Soul Gateway only provisions policy for `user:<owner>:<name>` subjects. This does not change agent discovery, agent-key injection, or the non-revocable agent-key contract.
 3. 2026-06-27: Admin-created user keys are copied and accepted only as encoded `sk-soul-...` bearer tokens. The encoded payload contains the existing signed-subject key, but the visible copied key string no longer displays the literal `user:<owner>:<name>` text or a version marker. Base64url is reversible and is not a privacy boundary. Raw user signed-subject bearer tokens are rejected.
 4. 2026-06-29: User-key owner autofill is derived from the verified Ploinky management context exposed by `/management/me`. Admins can still override the owner through the protected create-key flow, but Soul Gateway never trusts unauthenticated browser identity for ownership.
 
