@@ -1,5 +1,6 @@
 {
   "container": "docker.io/assistos/ploinky-node:24-bookworm-tools",
+  "startup": "manual",
   "about": "SearchAgent exposes normalized provider search through MCP tools.",
   "agent": "sh /code/scripts/start-search-agent.sh",
   "readiness": {
