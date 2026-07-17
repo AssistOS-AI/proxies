@@ -7,9 +7,9 @@
 | Provider | Dashboard Name | Base URL | API Key |
 |----------|---------------|----------|---------|
 | OpenRouter | openrouter | `https://openrouter.ai/api/v1/chat/completions` | *(GitHub secret: `OPENROUTER_API_KEY`)* |
-| CLIProxyAPI | axiologic_proxy | `http://10.0.2.2:8317/v1/chat/completions` | `sk-6992d807ac65daebdb0c422e5228b5d90df84b5759db2765fd7d5f50b36ec64c` |
-| Kiro Gateway | axiologic_kiro | `http://10.0.2.2:8000/v1/chat/completions` | `kiro-gateway-key` (subscription, managed auth) |
-| Copilot Gateway | copilot | `http://10.0.2.2:4141/v1/chat/completions` | `no-auth-needed` (subscription, managed auth) |
+| CLIProxyAPI | axiologic_proxy | *(current authenticated Router locator; no stable direct port)* | *(GitHub secret: `CLIPROXY_API_KEY`; revoke any value previously committed here)* |
+| Kiro Gateway | axiologic_kiro | *(current authenticated Router locator; unavailable until a tracked runtime-v5 agent is reviewed)* | *(subscription, managed auth)* |
+| Copilot Gateway | copilot | *(current authenticated Router locator; unavailable until a tracked runtime-v5 agent is reviewed)* | *(subscription, managed auth)* |
 | OpenAI | openai | `https://api.openai.com/v1/chat/completions` | *(GitHub secret: `OPENAI_API_KEY`)* |
 | Anthropic | anthropic | `https://api.anthropic.com/v1/messages` | *(GitHub secret: `ANTHROPIC_API_KEY`)* |
 | Google AI | google | `https://generativelanguage.googleapis.com/v1beta/models/` | *(GitHub secret: `GEMINI_API_KEY`)* |
@@ -58,7 +58,7 @@ Configure via the dashboard "Add Provider" dropdown (search templates).
 
 | Key | Value |
 |-----|-------|
-| Search Gateway URL | `http://10.0.2.2:8043/v1/chat/completions` |
+| Search Gateway URL | *(current authenticated Router service locator; no stable direct port)* |
 | `SEARCH_GATEWAY_API_KEY` | *(GitHub secret)* |
 
 ## Soul Gateway Keys

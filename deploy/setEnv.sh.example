@@ -8,24 +8,15 @@ export REMOTE_HOST="45.136.70.141"
 export REMOTE_USER="admin"
 export SSH_KEY_PATH="$HOME/proxies_private_key.pem"
 
-# Cloudflare Tunnel Configuration
-# Get this from: Cloudflare Dashboard -> Zero Trust -> Networks -> Tunnels -> Create
-export CLOUDFLARE_TUNNEL_TOKEN="your-cloudflare-tunnel-token-here"
-
 # Domain Configuration
 export KIRO_DOMAIN="kiro.axiologic.dev"
 export ANTIGRAVITY_DOMAIN="antigravity.axiologic.dev"
 
-# API Key for proxy authentication (32 bytes = 64 hex characters)
-# Generate with: openssl rand -hex 32
-export PROXY_API_KEY="$(openssl rand -hex 32)"
+# The runtime-v5 deploy helper is intentionally disabled. Do not put proxy API
+# keys, agent target ports, or deployment credentials in this file. It remains
+# usable only by the separate interactive OAuth authentication helper after an
+# operator has provisioned a reviewed runtime-v5 deployment.
 
-# Ploinky Git Repository (for installation)
-export PLOINKY_REPO="https://github.com/anthropics/ploinky.git"
-export PROXIES_REPO="https://github.com/anthropics/proxies.git"
-
-# Optional: Custom ports (defaults shown)
-export KIRO_PORT="8000"
-export ANTIGRAVITY_PORT="8001"
+# Optional: process-local OAuth callback ports used by auth-gateways.sh.
 export KIRO_OAUTH_PORT="51120"
 export ANTIGRAVITY_OAUTH_PORT="51121"

@@ -1,235 +1,85 @@
-# Proxy Gateway Deployment
+# Proxy Gateway Deployment (runtime v5)
 
-Deploy kiro-gateway and antigravity-gateway to a remote VPS with Cloudflare Tunnel access.
+The legacy `deploy.sh` helper is intentionally disabled. It exits before
+reading `setEnv.sh`, touching local secret material, or contacting a remote
+host. This checkout has no reviewed immutable Kiro or Antigravity runtime-v5
+agent artifacts, so it cannot safely perform deployment.
 
-## Architecture
+Edge publication is owned by the Ploinky runtime-v5 box. This repository does
+not install, configure, start, stop, or mutate a standalone connector, DNS
+record, public hostname, or tunnel. A deployment remains local-only until the
+box owner has a complete, separately authorized publication configuration.
 
-```
-Internet                     Cloudflare                    Your VPS
-   │                            │                            │
-   │  kiro.axiologic.dev        │     Tunnel                 │  ┌─────────────────┐
-   ├───────────────────────────►├──────────────────────────►├──► kiro-gateway    │
-   │                            │                            │  │ :8000           │
-   │                            │                            │  └─────────────────┘
-   │  antigravity.axiologic.dev │                            │  ┌─────────────────┐
-   ├───────────────────────────►├──────────────────────────►├──► antigravity-gw  │
-   │                            │                            │  │ :8001           │
-   │                            │                            │  └─────────────────┘
-```
+## Operator prerequisite
 
-## Prerequisites
+A replacement deployment path requires all of the following:
 
-1. **VPS with SSH access**
-   - Minimum: 1 vCPU, 1GB RAM, 10GB storage
-   - OS: Debian/Ubuntu recommended
-   - SSH key authentication configured
+- reviewed immutable runtime-v5 agent images and slim manifests;
+- authenticated Router services and Ploinky operator lifecycle control;
+- a reviewed secret provider that does not place credential values in output,
+  command arguments, generated scripts, status, or artifacts; and
+- root-only (`0600`) secret files if the provider must materialize a file.
 
-2. **Cloudflare Account**
-   - Domain added to Cloudflare (e.g., axiologic.dev)
-   - Zero Trust plan (free tier works)
+Do not provide credentials to `deploy.sh`. It has no activation path.
 
-3. **Cloudflare Tunnel**
-   - Create tunnel at: https://one.dash.cloudflare.com/ → Networks → Tunnels
-   - Save the tunnel token
-
-## Quick Start
-
-### 1. Configure Environment
+The remaining environment template is only for the separate interactive OAuth
+authentication helper after an operator has provisioned an approved runtime-v5
+deployment:
 
 ```bash
 cd proxies/deploy
 cp setEnv.sh.example setEnv.sh
-# Edit setEnv.sh with your values
-nano setEnv.sh
 ```
 
-Required values:
-- `REMOTE_HOST`: Your VPS IP address
-- `REMOTE_USER`: SSH username
-- `SSH_KEY_PATH`: Path to SSH private key
-- `CLOUDFLARE_TUNNEL_TOKEN`: From Cloudflare dashboard
+Configure only `REMOTE_HOST`, `REMOTE_USER`, `SSH_KEY_PATH`, and any optional
+process-local OAuth callback ports. Keep `setEnv.sh` untracked.
 
-### 2. Deploy
+## Disabled deployment
 
 ```bash
 chmod +x deploy.sh
 ./deploy.sh
 ```
 
-This will:
-- Install Node.js, Podman, and dependencies
-- Install and configure Ploinky
-- Set up both proxy gateways
-- Install and start Cloudflared
+This command always returns a nonzero status before reading configuration or
+performing network access. Do not bypass that guard or copy the retired remote
+setup logic into another workflow.
 
-### 3. Configure Cloudflare Tunnel Routes
-
-In Cloudflare Dashboard → Zero Trust → Networks → Tunnels → Your Tunnel → Public Hostname:
-
-| Subdomain | Domain | Service |
-|-----------|--------|---------|
-| kiro | axiologic.dev | http://localhost:8000 |
-| antigravity | axiologic.dev | http://localhost:8001 |
-
-### 4. Authenticate Gateways
+After a separately reviewed deployment exists, authenticate each gateway
+through the interactive helper:
 
 ```bash
-chmod +x auth-gateways.sh
 ./auth-gateways.sh
 ```
 
-This sets up SSH tunnels for OAuth callbacks and runs the authentication flow.
+Publication, DNS, and external verification must be performed by the Ploinky
+box workflow with dedicated test or operator-approved resources. Invalid or
+incomplete public mode must fail closed and must not change the selected mode.
 
-## Manual Authentication (Alternative)
+## Verify
 
-If the helper script doesn't work:
-
-### For Kiro Gateway:
-
-```bash
-# Terminal 1: SSH tunnel (keep open)
-ssh -i ~/proxies_private_key.pem -L 51120:127.0.0.1:51120 admin@45.136.70.141
-
-# Terminal 2: Run auth
-ssh -i ~/proxies_private_key.pem admin@45.136.70.141
-cd ~/proxy-gateway/workspace
-ploinky cli kiro-gateway
-```
-
-### For Antigravity Gateway:
+On the remote host:
 
 ```bash
-# Terminal 1: SSH tunnel (keep open)
-ssh -i ~/proxies_private_key.pem -L 51121:127.0.0.1:51121 admin@45.136.70.141
-
-# Terminal 2: Run auth
-ssh -i ~/proxies_private_key.pem admin@45.136.70.141
-cd ~/proxy-gateway/workspace
-ploinky cli antigravity-gateway
-```
-
-## Testing
-
-```bash
-# Get your API key
-cat .api_key
-
-# Test Kiro Gateway
-curl -H "Authorization: Bearer YOUR_API_KEY" https://kiro.axiologic.dev/v1/models
-
-# Test Antigravity Gateway
-curl -H "Authorization: Bearer YOUR_API_KEY" https://antigravity.axiologic.dev/v1/models
-```
-
-## Using with OpenCode
-
-Update `~/.config/opencode/opencode.json`:
-
-```json
-{
-  "provider": {
-    "kiro": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Kiro Gateway",
-      "options": {
-        "baseURL": "https://kiro.axiologic.dev/v1",
-        "headers": {
-          "Authorization": "Bearer YOUR_API_KEY"
-        }
-      },
-      "models": {
-        "claude-sonnet-4": { "name": "Claude Sonnet 4" }
-      }
-    },
-    "antigravity": {
-      "npm": "@ai-sdk/openai-compatible",
-      "name": "Antigravity Gateway",
-      "options": {
-        "baseURL": "https://antigravity.axiologic.dev/v1",
-        "headers": {
-          "Authorization": "Bearer YOUR_API_KEY"
-        }
-      },
-      "models": {
-        "gemini-2.5-pro": { "name": "Gemini 2.5 Pro" }
-      }
-    }
-  }
-}
-```
-
-## Troubleshooting
-
-### Check service status on VPS
-
-```bash
-ssh -i ~/proxies_private_key.pem admin@45.136.70.141
-
-# Check cloudflared
-sudo systemctl status cloudflared
-
-# Check proxy containers
 cd ~/proxy-gateway/workspace
 ploinky status
-
-# View logs
-podman logs ploinky_proxies_kiro-gateway_workspace_*
-podman logs ploinky_proxies_antigravity-gateway_workspace_*
 ```
 
-### Restart services
+Then exercise each service through its current Router locator. Do not address a
+private target port from a browser or add a physical-host publication to an
+agent manifest.
 
-```bash
-# Restart gateways
-ploinky restart kiro-gateway
-ploinky restart antigravity-gateway
+The `deploy-cliProxy.yml` workflow uses only local Ploinky operator commands for
+status, stop, and restart. Its `deploy` action creates a redacted candidate
+record and then fails closed: this checkout does not contain a tracked
+`cliproxyapi-gateway/manifest.json`, and runtime v5 has no safe direct-port or
+mutable-container activation path. The separate in-container update workflow
+is intentionally disabled until an immutable image and authenticated operator
+flow are reviewed.
 
-# Restart cloudflared
-sudo systemctl restart cloudflared
-```
-
-### Re-authenticate
-
-If tokens expire, run authentication again:
-
-```bash
-./auth-gateways.sh
-```
-
-## Persistent Storage
-
-Credentials are stored in `/shared` (mounted from `workspace/shared/`) to survive container restarts:
-
-| Path | Description |
-|------|-------------|
-| `/shared/proxy_api_key` | API key file |
-| `/shared/kiro-cli/` | Kiro CLI credentials (AWS SSO tokens) |
-| `/shared/antigravity/` | Antigravity account data |
-
-To regenerate the API key:
-```bash
-cd ~/proxy-gateway/workspace
-NEW_KEY=$(openssl rand -hex 32)
-ploinky var PROXY_API_KEY=$NEW_KEY
-echo "$NEW_KEY" > shared/proxy_api_key
-ploinky stop && ploinky clean && ploinky start kiro-gateway antigravity-gateway
-```
-
-## Security Notes
-
-- API key is auto-generated (32 bytes / 64 hex chars)
-- All traffic is encrypted via Cloudflare Tunnel
-- OAuth tokens are stored in the VPS workspace `/shared` directory
-- Keep `setEnv.sh` and `.api_key` secure (not in git)
-
-## Files
-
-```
-deploy/
-├── setEnv.sh.example  # Template (commit this)
-├── setEnv.sh          # Your config (DO NOT commit)
-├── .api_key           # Generated API key (DO NOT commit)
-├── deploy.sh          # Main deployment script
-├── auth-gateways.sh   # Authentication helper
-└── README.md          # This file
-```
+The Copilot, Search, and Kiro deployment workflows are also intentionally
+disabled before any remote access. Their expected runtime-v5 agent manifests
+are not tracked in this checkout, while their former workflows depended on
+stable direct target ports (and, for Search, plaintext secret staging). They
+must remain fail-closed until each service has a reviewed immutable image,
+slim manifest, authenticated Router service, and operator-controlled lifecycle.

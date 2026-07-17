@@ -7,9 +7,13 @@ import { Counter, Rate, Trend } from 'k6/metrics';
 // ──────────────────────────────────────────────────────────────
 
 const BASE_URL = __ENV.BASE_URL || 'https://soul.axiologic.dev';
-const API_KEY =
-    __ENV.API_KEY ||
-    'sk-soul-eea0fd976aaa8a05712fe60b9db973727470e5edabaf31ca31953b65240e85a8';
+// Example: API_KEY='<dedicated-revocable-test-key>' k6 run k6-stress.js
+const API_KEY = String(__ENV.API_KEY || '').trim();
+if (!API_KEY) {
+    throw new Error(
+        'API_KEY is required; use a dedicated, revocable stress-test credential',
+    );
+}
 
 const MODELS = ['axiologic-deep', 'axiologic-fast', 'axiologic-ultra'];
 

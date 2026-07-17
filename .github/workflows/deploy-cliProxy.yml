@@ -1,434 +1,132 @@
-name: Deploy CLIProxyAPI Gateway
+name: Manage CLIProxyAPI Gateway (runtime v5)
 
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: 'Deployment action'
+        description: V5 operator lifecycle; deploy emits a candidate record but never activates it
         required: true
-        default: 'deploy'
+        default: status
         type: choice
         options:
+          - status
           - deploy
           - restart
           - stop
-          - status
-          - setup-tunnel
 
 jobs:
-  deploy-cliproxy:
-    name: Deploy CLIProxyAPI to Remote Server
+  manage:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up SSH key
+        if: inputs.action != 'deploy'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          REMOTE_HOST: ${{ vars.REMOTE_HOST }}
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
+          set -euo pipefail
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$REMOTE_HOST"
+          install -m 700 -d ~/.ssh
+          install -m 600 /dev/null ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          ssh-keyscan -H "$REMOTE_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
-      - name: Test SSH connection
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} \
-            "echo 'SSH connection OK'"
-
-      # ─── STATUS ─────────────────────────────────────────────────
-      - name: Handle status check
+      - name: Status
         if: inputs.action == 'status'
+        env:
+          REMOTE_HOST: ${{ vars.REMOTE_HOST }}
+          REMOTE_USER: ${{ vars.REMOTE_USER }}
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
-          echo "=== Ploinky Status ==="
+            "$REMOTE_USER@$REMOTE_HOST" <<'EOF'
+          set -euo pipefail
           cd ~/proxy-gateway/workspace
           ploinky status
-
-          echo ""
-          echo "=== CLIProxyAPI Health Check ==="
-          curl -s http://localhost:8317/ 2>/dev/null || echo "CLIProxyAPI not reachable on port 8317"
-
-          echo ""
-          echo "=== Caddy Reverse Proxy ==="
-          sudo systemctl is-active cliproxy-caddy 2>/dev/null && echo "Caddy: running on port 8318" || echo "Caddy: not running"
-          curl -s -o /dev/null -w "Landing page (localhost:8318): HTTP %{http_code}\n" http://localhost:8318/ 2>/dev/null || echo "Caddy not reachable on 8318"
-
-          echo ""
-          echo "=== Cloudflared ==="
-          sudo systemctl is-active cloudflared 2>/dev/null && echo "Cloudflared: running" || echo "Cloudflared: not running"
-
-          echo ""
-          echo "=== Container Logs (last 10 lines) ==="
-          podman logs --tail 10 $(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1) 2>/dev/null || echo "No CLIProxyAPI container found"
           EOF
 
-      # ─── STOP ───────────────────────────────────────────────────
-      - name: Handle stop
+      - name: Stop
         if: inputs.action == 'stop'
+        env:
+          REMOTE_HOST: ${{ vars.REMOTE_HOST }}
+          REMOTE_USER: ${{ vars.REMOTE_USER }}
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+            "$REMOTE_USER@$REMOTE_HOST" <<'EOF'
+          set -euo pipefail
           cd ~/proxy-gateway/workspace
-          CONTAINER=$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
-          if [ -n "$CONTAINER" ]; then
-            echo "Stopping container: $CONTAINER"
-            podman stop "$CONTAINER" 2>/dev/null || true
-            echo "Container stopped."
-          else
-            echo "No CLIProxyAPI container is running."
-          fi
+          ploinky stop cliproxyapi-gateway
           EOF
 
-      # ─── RESTART ────────────────────────────────────────────────
-      - name: Handle restart
+      - name: Restart
         if: inputs.action == 'restart'
+        env:
+          REMOTE_HOST: ${{ vars.REMOTE_HOST }}
+          REMOTE_USER: ${{ vars.REMOTE_USER }}
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
+            "$REMOTE_USER@$REMOTE_HOST" <<'EOF'
+          set -euo pipefail
           cd ~/proxy-gateway/workspace
-          ploinky restart cliproxyapi-gateway || echo "Restart failed - agent may not be enabled yet"
-          sleep 5
-          echo ""
-          echo "=== Post-restart Status ==="
+          ploinky restart cliproxyapi-gateway
           ploinky status
-          echo ""
-          curl -s http://localhost:8317/ 2>/dev/null || echo "CLIProxyAPI not reachable yet"
           EOF
 
-      # ─── SETUP-TUNNEL ──────────────────────────────────────────
-      - name: Setup Caddy reverse proxy and Cloudflare tunnel route
-        if: inputs.action == 'setup-tunnel'
+      - name: Prepare artifact-only v5 deployment candidate
+        id: candidate
+        if: inputs.action == 'deploy'
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'TUNNEL_EOF'
-          set -e
-
-          echo "=========================================="
-          echo "  CLIProxyAPI Tunnel Setup"
-          echo "=========================================="
-          echo ""
-
-          # ── Step 1: Install Caddy if not present ──
-          if ! command -v caddy &> /dev/null; then
-            echo "[1/4] Installing Caddy..."
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
-            curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
-            curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
-            sudo apt-get update -qq
-            sudo apt-get install -y -qq caddy
-            # Stop the default caddy service - we use our own
-            sudo systemctl stop caddy 2>/dev/null || true
-            sudo systemctl disable caddy 2>/dev/null || true
-          else
-            echo "[1/4] Caddy already installed: $(caddy version)"
-          fi
-
-          # ── Step 2: Create Caddyfile for CLIProxyAPI ──
-          echo "[2/4] Configuring Caddy reverse proxy..."
-          sudo mkdir -p /etc/cliproxy-caddy
-
-          sudo tee /etc/cliproxy-caddy/Caddyfile > /dev/null << 'CADDYFILE'
+          set -euo pipefail
+          candidate_dir="$RUNNER_TEMP/cliproxyapi-v5-candidate"
+          manifest="cliproxyapi-gateway/manifest.json"
+          install -d -m 0755 "$candidate_dir"
           {
-              admin off
-          }
-
-          :8318 {
-              # Redirect root to management dashboard
-              redir / /management.html permanent
-
-              # Proxy everything else to CLIProxyAPI
-              reverse_proxy localhost:8317
-          }
-          CADDYFILE
-
-          echo "  Caddyfile written to /etc/cliproxy-caddy/Caddyfile"
-
-          # ── Step 3: Create systemd service for Caddy ──
-          echo "[3/4] Setting up Caddy systemd service..."
-
-          sudo tee /etc/systemd/system/cliproxy-caddy.service > /dev/null << 'SYSTEMD'
-          [Unit]
-          Description=Caddy reverse proxy for CLIProxyAPI (proxy.axiologic.dev)
-          After=network-online.target
-          Wants=network-online.target
-
-          [Service]
-          Type=simple
-          ExecStart=/usr/bin/caddy run --config /etc/cliproxy-caddy/Caddyfile --adapter caddyfile
-          ExecReload=/usr/bin/caddy reload --config /etc/cliproxy-caddy/Caddyfile --adapter caddyfile
-          Restart=on-failure
-          RestartSec=5s
-
-          [Install]
-          WantedBy=multi-user.target
-          SYSTEMD
-
-          sudo systemctl daemon-reload
-          sudo systemctl enable cliproxy-caddy
-          sudo systemctl restart cliproxy-caddy
-
-          sleep 2
-          if sudo systemctl is-active --quiet cliproxy-caddy; then
-            echo "  Caddy is running on port 8318"
-          else
-            echo "  ERROR: Caddy failed to start"
-            sudo systemctl status cliproxy-caddy --no-pager || true
-          fi
-
-          # ── Step 4: Verify and print Cloudflare tunnel instructions ──
-          echo "[4/4] Cloudflare tunnel configuration..."
-          echo ""
-
-          if sudo systemctl is-active --quiet cloudflared; then
-            echo "  Cloudflared is running."
-          else
-            echo "  WARNING: Cloudflared is not running!"
-            echo "  Install it with: sudo cloudflared service install <TUNNEL_TOKEN>"
-          fi
-
-          echo ""
-          echo "=========================================="
-          echo "  Caddy Setup Complete!"
-          echo "=========================================="
-          echo ""
-          echo "  Caddy proxy: localhost:8318 -> localhost:8317"
-          echo "    - GET /  =>  302 redirect to /management.html"
-          echo "    - All other requests proxied to CLIProxyAPI"
-          echo ""
-
-          # Verify the redirect works
-          echo "=== Verification ==="
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8318/ 2>/dev/null)
-          REDIRECT_TO=$(curl -s -o /dev/null -w "%{redirect_url}" http://localhost:8318/ 2>/dev/null)
-          echo "  GET http://localhost:8318/ => HTTP $HTTP_CODE -> $REDIRECT_TO"
-
-          API_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8318/v1/models 2>/dev/null)
-          echo "  GET http://localhost:8318/v1/models => HTTP $API_CODE"
-
-          MGMT_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8318/management.html 2>/dev/null)
-          echo "  GET http://localhost:8318/management.html => HTTP $MGMT_CODE"
-          echo ""
-
-          echo "=========================================="
-          echo "  Cloudflare Tunnel - Manual Step Required"
-          echo "=========================================="
-          echo ""
-          echo "  Add this public hostname in the Cloudflare Zero Trust dashboard:"
-          echo ""
-          echo "    Tunnel:    (your existing tunnel - same as kiro/antigravity)"
-          echo "    Subdomain: proxy"
-          echo "    Domain:    axiologic.dev"
-          echo "    Service:   HTTP://localhost:8318"
-          echo ""
-          echo "  Steps:"
-          echo "    1. Go to https://one.dash.cloudflare.com"
-          echo "    2. Navigate to: Networks > Tunnels"
-          echo "    3. Click on your tunnel > Public Hostname tab"
-          echo "    4. Click 'Add a public hostname'"
-          echo "    5. Set subdomain=proxy, domain=axiologic.dev, service=HTTP://localhost:8318"
-          echo "    6. Save"
-          echo ""
-          echo "  Once configured, access at:"
-          echo "    https://proxy.axiologic.dev  (redirects to management dashboard)"
-          echo "    https://proxy.axiologic.dev/v1/models  (API endpoint)"
-          echo ""
-          TUNNEL_EOF
-
-      # ─── DEPLOY ─────────────────────────────────────────────────
-      - name: Deploy - Sync agent files to remote
-        if: inputs.action == 'deploy'
-        run: |
-          rsync -avz --progress \
-            --exclude '.git' \
-            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new" \
-            ./cliproxyapi-gateway/ \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }}:~/proxy-gateway/proxies/cliproxyapi-gateway/
-
-      - name: Deploy - Run remote setup
-        if: inputs.action == 'deploy'
-        env:
-          PROXY_API_KEY: ${{ secrets.CLIPROXY_API_KEY }}
-          MANAGEMENT_PASSWORD: ${{ secrets.CLIPROXY_MANAGEMENT_KEY }}
-          HF_API_KEY: ${{ secrets.HF_API_KEY }}
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << SETUP_EOF
-          set -e
-
-          WORKSPACE="\$HOME/proxy-gateway/workspace"
-          cd "\$WORKSPACE"
-
-          echo "=========================================="
-          echo "  CLIProxyAPI Gateway - Remote Setup"
-          echo "=========================================="
-          echo ""
-
-          # Ensure proxies repo is linked in ploinky workspace
-          if [ ! -L ".ploinky/repos/proxies" ]; then
-            echo "Linking proxies repo..."
-            ln -sf "\$HOME/proxy-gateway/proxies" .ploinky/repos/proxies
-          fi
-
-          # Verify agent is visible
-          echo "Available agents:"
-          ploinky list agents 2>&1 | grep -A1 cliproxyapi || true
-          echo ""
-
-          # Set environment variables in ploinky secrets
-          ploinky var PROXY_API_KEY "${PROXY_API_KEY}"
-          ploinky var MANAGEMENT_PASSWORD "${MANAGEMENT_PASSWORD}"
-          ploinky var HF_API_KEY "${HF_API_KEY}"
-
-          # Check if agent is already running
-          EXISTING=\$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
-
-          if [ -n "\$EXISTING" ]; then
-            echo "CLIProxyAPI container already running: \$EXISTING"
-            echo "Refreshing agent with latest code..."
-            ploinky refresh agent cliproxyapi-gateway 2>&1 || {
-              echo "Refresh failed, trying restart..."
-              ploinky restart cliproxyapi-gateway 2>&1 || true
-            }
-          else
-            echo "Starting CLIProxyAPI gateway for the first time..."
-            echo "This includes compiling Go from source - may take several minutes."
-            echo ""
-
-            # Check if agent is already enabled
-            if grep -q "cliproxyapi-gateway" .ploinky/agents 2>/dev/null; then
-              echo "Agent already enabled, starting..."
-              ploinky start 2>&1
+            echo 'runtime_contract=5'
+            echo "repository_revision=$(git rev-parse HEAD)"
+            echo 'activation=blocked'
+            if test -f "$manifest"; then
+              echo 'source_artifact=present'
+              echo 'reason=activation requires a separately reviewed authenticated Ploinky operator workflow'
             else
-              echo "Enabling and starting agent..."
-              ploinky enable agent cliproxyapi-gateway 2>&1
-
-              # If ploinky router is already running, just start this agent
-              if pgrep -f "RoutingServer" > /dev/null 2>&1; then
-                echo "Router already running, starting agent container..."
-                ploinky restart cliproxyapi-gateway 2>&1 || ploinky start 2>&1
-              else
-                ploinky start cliproxyapi-gateway 8080 2>&1
-              fi
+              echo 'source_artifact=missing'
+              echo 'reason=cliproxyapi-gateway/manifest.json is not tracked in this repository'
             fi
-          fi
-
-          echo ""
-          echo "Waiting for CLIProxyAPI to start (build + boot)..."
-          for i in \$(seq 1 60); do
-            if curl -s -o /dev/null -w "%{http_code}" http://localhost:8317/ 2>/dev/null | grep -q "200"; then
-              echo ""
-              echo "CLIProxyAPI is UP!"
-              break
-            fi
-            printf "."
-            sleep 10
-          done
-          echo ""
-
-          # Ensure Caddy reverse proxy is running for tunnel access
-          if sudo systemctl is-active --quiet cliproxy-caddy 2>/dev/null; then
-            echo "Caddy reverse proxy: running (port 8318)"
+          } > "$candidate_dir/STATUS"
+          if test -f "$manifest"; then
+            tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+              -czf "$candidate_dir/cliproxyapi-gateway.tar.gz" cliproxyapi-gateway
+            sha256sum "$candidate_dir/cliproxyapi-gateway.tar.gz" \
+              > "$candidate_dir/cliproxyapi-gateway.tar.gz.sha256"
+            echo 'candidate_present=true' >> "$GITHUB_OUTPUT"
           else
-            echo "NOTE: Caddy reverse proxy not set up yet."
-            echo "  Run this workflow with action 'setup-tunnel' to configure it."
+            echo 'candidate_present=false' >> "$GITHUB_OUTPUT"
           fi
 
-          echo ""
-          echo "=========================================="
-          echo "  Deployment Result"
-          echo "=========================================="
-          echo ""
-
-          ploinky status
-          echo ""
-
-          echo "Local API:      http://localhost:8317/"
-          curl -s http://localhost:8317/ 2>/dev/null || echo "  (not reachable yet - build may still be in progress)"
-          echo ""
-
-          echo ""
-          echo "Public URL:     https://proxy.axiologic.dev"
-          echo "Management UI:  https://proxy.axiologic.dev/management.html"
-          echo "Models API:     https://proxy.axiologic.dev/v1/models"
-          echo ""
-
-          # Show container logs
-          echo "=== Recent container logs ==="
-          CONTAINER=\$(podman ps --filter "name=cliproxyapi" --format "{{.Names}}" 2>/dev/null | head -1)
-          if [ -n "\$CONTAINER" ]; then
-            podman logs --tail 20 "\$CONTAINER" 2>&1
-          else
-            echo "(container not yet visible)"
-          fi
-          SETUP_EOF
-
-      - name: Deploy - Configure credential prefixes
+      - name: Upload blocked v5 candidate record
         if: inputs.action == 'deploy'
-        env:
-          MANAGEMENT_PASSWORD: ${{ secrets.CLIPROXY_MANAGEMENT_KEY }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cliproxyapi-v5-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/cliproxyapi-v5-candidate
+          if-no-files-found: error
+
+      - name: Reject unsupported v5 activation
+        if: inputs.action == 'deploy'
         run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << PREFIX_EOF
-          set -e
-
-          MGMT_URL="http://localhost:8317/v0/management"
-          AUTH_HEADER="Authorization: Bearer ${MANAGEMENT_PASSWORD}"
-
-          echo "Configuring credential prefixes..."
-
-          # Map of auth file patterns to their desired prefix
-          # Format: pattern|prefix
-          PREFIX_MAP="
-          gemini-*-gen-lang-client-*.json|gemini-cli
-          gemini-*-secret-energy-*.json|gemini-cli
-          codex-*.json|codex
-          antigravity-*.json|antigravity
-          "
-
-          # Get list of auth files
-          AUTH_FILES=\$(curl -s -H "\$AUTH_HEADER" "\$MGMT_URL/auth-files" | \
-            python3 -c "import sys,json; [print(f['name']) for f in json.load(sys.stdin).get('files',[])]" 2>/dev/null)
-
-          for mapping in \$PREFIX_MAP; do
-            [ -z "\$mapping" ] && continue
-            PATTERN=\$(echo "\$mapping" | cut -d'|' -f1)
-            PREFIX=\$(echo "\$mapping" | cut -d'|' -f2)
-
-            for AUTH_FILE in \$AUTH_FILES; do
-              case "\$AUTH_FILE" in
-                \$PATTERN)
-                  # Download, check if prefix already set, update if needed
-                  CURRENT=\$(curl -s -H "\$AUTH_HEADER" "\$MGMT_URL/auth-files/download?name=\$AUTH_FILE" | \
-                    python3 -c "import sys,json; print(json.load(sys.stdin).get('prefix',''))" 2>/dev/null)
-
-                  if [ "\$CURRENT" != "\$PREFIX" ]; then
-                    echo "  Setting prefix '\$PREFIX' on \$AUTH_FILE"
-                    # Download, add prefix, re-upload
-                    curl -s -H "\$AUTH_HEADER" "\$MGMT_URL/auth-files/download?name=\$AUTH_FILE" | \
-                      python3 -c "import sys,json; d=json.load(sys.stdin); d['prefix']='\$PREFIX'; json.dump(d,sys.stdout)" \
-                      > /tmp/auth-prefix-update.json
-
-                    curl -s -X POST -H "\$AUTH_HEADER" \
-                      -F "file=@/tmp/auth-prefix-update.json;filename=\$AUTH_FILE" \
-                      "\$MGMT_URL/auth-files" > /dev/null
-
-                    rm -f /tmp/auth-prefix-update.json
-                  else
-                    echo "  \$AUTH_FILE already has prefix '\$PREFIX'"
-                  fi
-                  ;;
-              esac
-            done
-          done
-
-          echo "Credential prefix configuration complete."
-          PREFIX_EOF
+          set -euo pipefail
+          if test '${{ steps.candidate.outputs.candidate_present }}' != true; then
+            echo '::error::CLIProxyAPI v5 source artifact is absent; no remote files or lifecycle state were changed.'
+          else
+            echo '::error::CLIProxyAPI activation is unsupported under runtime v5 until an authenticated Ploinky operator workflow is reviewed; the candidate was uploaded but not deployed.'
+          fi
+          exit 1
 
       - name: Cleanup SSH key
-        if: always()
+        if: always() && inputs.action != 'deploy'
         run: rm -f ~/.ssh/deploy_key

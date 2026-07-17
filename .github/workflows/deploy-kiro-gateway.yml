@@ -1,154 +1,18 @@
-name: Deploy Kiro Gateway
+name: Deploy Kiro Gateway (disabled under runtime v5)
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'kiro-gateway/**'
   workflow_dispatch:
-    inputs:
-      action:
-        description: 'Deployment action'
-        required: true
-        default: 'deploy'
-        type: choice
-        options:
-          - deploy
-          - restart
-          - stop
-          - status
+
+permissions:
+  contents: read
 
 jobs:
-  deploy-kiro-gateway:
-    name: Deploy Kiro Gateway to Remote Server
+  reject-legacy-direct-deploy:
+    name: Reject missing v5 agent artifact
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up SSH key
+      - name: Fail closed before remote access
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H ${{ vars.REMOTE_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Test SSH connection
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} \
-            "echo 'SSH connection OK'"
-
-      # ─── STATUS ─────────────────────────────────────────────────
-      - name: Handle status check
-        if: inputs.action == 'status'
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
-          echo "=== Kiro Gateway Status ==="
-          CONTAINER=$(podman ps --filter "name=kiro-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
-          if [ -n "$CONTAINER" ]; then
-            echo "Container: $CONTAINER (running)"
-            podman logs --tail 10 "$CONTAINER" 2>/dev/null
-          else
-            echo "No kiro-gateway container found"
-          fi
-          EOF
-
-      # ─── STOP ───────────────────────────────────────────────────
-      - name: Handle stop
-        if: inputs.action == 'stop'
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
-          cd ~/soulGateway
-          ploinky stop kiro-gateway 2>&1 || echo "Stop failed - agent may not be running"
-          EOF
-
-      # ─── RESTART ────────────────────────────────────────────────
-      - name: Handle restart
-        if: inputs.action == 'restart'
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} << 'EOF'
-          cd ~/soulGateway
-          ploinky restart kiro-gateway || echo "Restart failed"
-          sleep 5
-          CONTAINER=$(podman ps --filter "name=kiro-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
-          [ -n "$CONTAINER" ] && podman logs --tail 5 "$CONTAINER" 2>/dev/null
-          EOF
-
-      # ─── DEPLOY ─────────────────────────────────────────────────
-      - name: Deploy - Run remote setup
-        if: inputs.action == 'deploy' || github.event_name == 'push'
-        env:
-          KIRO_DASHBOARD_PASSWORD: ${{ secrets.KIRO_DASHBOARD_PASSWORD }}
-        run: |
-          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
-            -o SendEnv=KIRO_DASHBOARD_PASSWORD \
-            ${{ vars.REMOTE_USER }}@${{ vars.REMOTE_HOST }} \
-            "KIRO_DASHBOARD_PASSWORD='${KIRO_DASHBOARD_PASSWORD}' bash -s" << 'DEPLOY_SCRIPT'
-          set -e
-
-          WORKSPACE="$HOME/soulGateway"
-          CODE_DIR="$HOME/code"
-
-          echo "=========================================="
-          echo "  Kiro Gateway - Deploy"
-          echo "=========================================="
-
-          # Update proxies repo
-          cd "$CODE_DIR/proxies" && git fetch origin main && git reset --hard origin/main
-
-          cd "$WORKSPACE"
-
-          # Stop existing if running
-          if podman ps -a --format '{{.Names}}' 2>/dev/null | grep -q "kiro-gateway"; then
-            echo "Stopping existing kiro-gateway..."
-            ploinky stop kiro-gateway 2>&1 || true
-            ploinky clean kiro-gateway 2>&1 || true
-          fi
-
-          # Set dashboard password if available
-          if [ -n "${KIRO_DASHBOARD_PASSWORD}" ]; then
-            ploinky var DASHBOARD_PASSWORD "${KIRO_DASHBOARD_PASSWORD}" 2>/dev/null || true
-            ploinky expose DASHBOARD_PASSWORD kiro-gateway 2>/dev/null || true
-            echo "Dashboard password configured"
-          fi
-
-          # Enable and start
-          ploinky enable agent kiro-gateway 2>/dev/null || true
-          echo "Starting kiro-gateway..."
-          ploinky start kiro-gateway
-
-          # Health check
-          echo "Waiting for startup..."
-          for i in $(seq 1 20); do
-            sleep 2
-            CONTAINER=$(podman ps --filter "name=kiro-gateway" --format "{{.Names}}" 2>/dev/null | head -1)
-            if [ -n "$CONTAINER" ]; then
-              echo ""
-              echo "Kiro Gateway container is running."
-              echo ""
-              echo "=========================================="
-              echo "  Deployment Success"
-              echo "=========================================="
-              echo ""
-              echo "NOTE: If not yet authenticated:"
-              echo "  - Local:  SSH tunnel (ssh -L 8000:127.0.0.1:8000 -L 3128:127.0.0.1:3128)"
-              echo "            then visit http://localhost:8000 and click 'Sign in with Google'"
-              echo "  - Remote: visit the dashboard and paste the OAuth callback URL"
-              exit 0
-            fi
-            echo "  Attempt $i/20..."
-          done
-
-          echo "ERROR: Kiro Gateway failed to start"
+          set -euo pipefail
+          echo '::error::kiro-gateway has no tracked runtime-v5 manifest in this repository. Stable physical-host port 8000, SSH port-forward publication, and mutable remote-container deployment are forbidden; add a pinned agent artifact, declared Router service, and separately reviewed authenticated Ploinky operator workflow before activation.'
           exit 1
-          DEPLOY_SCRIPT
-
-      - name: Cleanup
-        if: always()
-        run: rm -f ~/.ssh/deploy_key
