@@ -1,12 +1,11 @@
 const agents = [
     ['Soul Gateway', 'soul-gateway/docs/index.html', 'soul-gateway'],
     ['SearchAgent', 'searchAgent/docs/index.html', 'searchAgent'],
-    ['Default Local LLM', 'default-local-llm/docs/index.html', 'default-local-llm'],
 ];
 
 function repositoryRoot() {
     const url = new URL(window.location.href);
-    const markers = ['/searchAgent/docs/', '/default-local-llm/docs/', '/soul-gateway/docs/'];
+    const markers = ['/searchAgent/docs/', '/soul-gateway/docs/'];
     for (const marker of markers) {
         const index = url.pathname.indexOf(marker);
         if (index >= 0) {
@@ -73,13 +72,6 @@ function documentationItems(root, agent) {
             ['SearchAgent Home', link(root, 'searchAgent/docs/index.html')],
             ['Specifications', link(root, 'searchAgent/docs/specsLoader.html?spec=matrix.md')],
             ['Wiki', link(root, 'searchAgent/docs/wiki.html')],
-        ];
-    }
-    if (agent === 'default-local-llm') {
-        return [
-            ['Default Local LLM Home', link(root, 'default-local-llm/docs/index.html')],
-            ['Specifications', link(root, 'default-local-llm/docs/specsLoader.html?spec=matrix.md')],
-            ['Wiki', link(root, 'default-local-llm/docs/wiki.html')],
         ];
     }
     if (agent === 'soul-gateway') {
