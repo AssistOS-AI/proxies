@@ -27,7 +27,9 @@ on_stop() {
 }
 trap on_stop INT TERM
 
-export PORT="${PLOINKY_AGENT_SERVER_PORT:-7000}"
+# Ploinky publishes the implicit AgentServer port from the profile `PORT`, so
+# the container keeps whatever it was given and only defaults to 7000.
+export PORT="${PORT:-7000}"
 sh "${AGENT_SERVER}" &
 agent_server_pid="$!"
 

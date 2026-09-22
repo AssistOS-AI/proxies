@@ -25,15 +25,17 @@ function alive(pid) {
 
 // agentServerOnTerm: exit code the fake AgentServer uses on TERM.
 // agentServerExitAfterMs / probeExitAfterMs: make a child die on its own.
-function setup(t, { agentServerOnTerm = 0, agentServerExitAfterMs = 0, probeExitAfterMs = 0 } = {}) {
+function setup(t, { agentServerOnTerm = 0, agentServerExitAfterMs = 0, probeExitAfterMs = 0, env = {} } = {}) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ocf-startup-'));
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
     const pids = path.join(dir, 'pids');
     fs.mkdirSync(pids);
     const agentServer = path.join(dir, 'AgentServer.sh');
     const selfExit = agentServerExitAfterMs ? `sleep ${agentServerExitAfterMs / 1000}; exit 3` : 'while :; do sleep 0.1; done';
+    const portFile = path.join(dir, 'port');
     fs.writeFileSync(agentServer, [
         '#!/bin/sh',
+        `echo "\${PORT-unset}" > '${portFile}'`,
         `echo $$ > '${pids}/agent-server'`,
         `trap 'exit ${agentServerOnTerm}' TERM INT`,
         selfExit,
@@ -53,6 +55,7 @@ function setup(t, { agentServerOnTerm = 0, agentServerExitAfterMs = 0, probeExit
             OPENCODE_FREE_RUNTIME_DIR: path.join(dir, 'runtime'),
             OPENCODE_FREE_AGENT_SERVER: agentServer,
             OPENCODE_FREE_PROBE_LOOP: probe,
+            ...env,
         },
         stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -72,7 +75,8 @@ function setup(t, { agentServerOnTerm = 0, agentServerExitAfterMs = 0, probeExit
         }
         throw new Error('children did not start');
     };
-    return { child, exited, childPids, dir };
+    const port = () => fs.readFileSync(portFile, 'utf8').trim();
+    return { child, exited, childPids, dir, port };
 }
 
 test('a requested stop (TERM) exits 0 when AgentServer shuts down cleanly', async (t) => {
@@ -117,6 +121,27 @@ test('the probe loop exiting stops the container with 1', async (t) => {
     assert.match(result.stderr, /probe loop exited/);
     await sleep(200);
     assert.equal(alive(agentPid), false, 'AgentServer was stopped');
+});
+
+// Ploinky publishes the implicit AgentServer port from the profile `PORT`
+// (cli/sandbox/docker/agentServiceManager.js resolveImplicitAgentServerPort),
+// so the container must not override a port it was given.
+test('a profile PORT reaches AgentServer unchanged', async (t) => {
+    const { child, exited, childPids, port } = setup(t, { env: { PORT: '7311' } });
+    await childPids();
+    const seen = port();
+    child.kill('SIGTERM');
+    await exited;
+    assert.equal(seen, '7311');
+});
+
+test('AgentServer gets 7000 when no PORT was given', async (t) => {
+    const { child, exited, childPids, port } = setup(t);
+    await childPids();
+    const seen = port();
+    child.kill('SIGTERM');
+    await exited;
+    assert.equal(seen, '7000');
 });
 
 test('bash accepts the script', () => {

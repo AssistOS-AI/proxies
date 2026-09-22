@@ -7,15 +7,20 @@ CLI="${OPENCODE_FREE_CLI_PATH:-/opt/opencode/bin/opencode}"
 CONFIG_DIR="${OPENCODE_FREE_CONFIG_DIR:-/opt/opencode-free/config}"
 SOURCE_CONTRACT="${OPENCODE_FREE_SOURCE_CONTRACT:-/opt/opencode-free/source.contract}"
 RUNTIME_DIR="${OPENCODE_FREE_RUNTIME_DIR:-/var/tmp/opencode-free}"
+# The image ships the defaults; the overrides exist so the test suite can
+# run the same script on a host whose minimal PATH has no `timeout`.
+INNER_PATH="${OPENCODE_FREE_READINESS_PATH:-/usr/bin:/bin}"
+TIMEOUT_BIN="${OPENCODE_FREE_TIMEOUT_BIN:-timeout}"
 
 fail() {
     echo "opencode-free is not ready: $*" >&2
     exit 1
 }
 
+HEALTH_URL="http://127.0.0.1:${PORT:-7000}/health" \
 node --input-type=module <<'NODE' || exit 1
 try {
-    const response = await fetch('http://127.0.0.1:7000/health', {
+    const response = await fetch(process.env.HEALTH_URL, {
         headers: { accept: 'application/json' },
         signal: AbortSignal.timeout(3000),
     });
@@ -43,11 +48,21 @@ rm -rf "${root}"
 mkdir -p "${root}/home" "${root}/data" "${root}/state" "${root}/cache" "${root}/tmp" "${root}/work"
 trap 'rm -rf "${root}"' EXIT INT TERM
 
+# The CLI runs under a timeout so a hung probe cannot pin the container; the
+# wrapper may only be dropped when the binary is absent and the caller allows it.
+if env -i PATH="${INNER_PATH}" sh -c 'command -v "$1" >/dev/null 2>&1' sh "${TIMEOUT_BIN}"; then
+    set -- "${TIMEOUT_BIN}" 10 "${CLI}"
+elif [ "${OPENCODE_FREE_ALLOW_NO_TIMEOUT:-0}" = "1" ]; then
+    set -- "${CLI}"
+else
+    fail "${TIMEOUT_BIN} is not available on ${INNER_PATH}"
+fi
+
 status=0
 (
     cd "${root}/work"
     exec env -i \
-        PATH=/usr/bin:/bin \
+        PATH="${INNER_PATH}" \
         HOME="${root}/home" \
         XDG_CONFIG_HOME="${CONFIG_DIR}" \
         XDG_DATA_HOME="${root}/data" \
@@ -59,7 +74,7 @@ status=0
         OPENCODE_DISABLE_MODELS_FETCH=1 OPENCODE_DISABLE_AUTOUPDATE=1 \
         OPENCODE_DISABLE_LSP_DOWNLOAD=1 OPENCODE_DISABLE_SHARE=1 \
         OPENCODE_DISABLE_TERMINAL_TITLE=1 \
-        timeout 10 "${CLI}" debug agent chat --pure
+        "$@" debug agent chat --pure
 ) > "${root}/agent.json" 2> "${root}/agent.err" || status=$?
 [ "${status}" -eq 0 ] || fail "debug agent chat exited ${status}"
 
