@@ -15,8 +15,8 @@ export const STATE_PRECEDENCE = Object.freeze({
 
 const REASON_MAX_CHARS = 200;
 const REFUSED_REPROBE_MS = 24 * 60 * 60 * 1000;
-const LOCK_STALE_MS = 10000;
-const LOCK_TIMEOUT_MS = 5000;
+export const LOCK_STALE_MS = 10000;
+export const LOCK_TIMEOUT_MS = 15000;
 const LOCK_RETRY_MS = 10;
 const HANDLER_STATES = new Set(['refused', 'tripped']);
 const PROBE_LOWERINGS = Object.freeze({
@@ -105,7 +105,67 @@ function sleepSync(ms) {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function withLock(file, fn) {
+// Only the holder of the reclaim lock (`<lock>.reclaim`) may remove a state
+// lock it does not own, and only the exact stale directory it re-checked under
+// that reclaim lock; a new lock never matches, because its mtime is new. A
+// holder removes only its own lock, so a holder judged dead never deletes its
+// successor's lock. The one assumption: a live writer never stays inside the
+// one-read-one-rename critical section for LOCK_STALE_MS. LOCK_TIMEOUT_MS
+// exceeds LOCK_STALE_MS, so a waiter always outlives an orphaned lock.
+export function lockIdentity(dir) {
+    try {
+        const stat = fs.lstatSync(dir);
+        return { ino: stat.ino, mtimeMs: stat.mtimeMs };
+    } catch (error) {
+        if (error?.code === 'ENOENT') return null;
+        throw error;
+    }
+}
+
+function sameLock(a, b) {
+    return Boolean(a) && Boolean(b) && a.ino === b.ino && a.mtimeMs === b.mtimeMs;
+}
+
+function isStaleLock(identity) {
+    return Boolean(identity) && Date.now() - identity.mtimeMs >= LOCK_STALE_MS;
+}
+
+function releaseLock(dir, held) {
+    if (!sameLock(lockIdentity(dir), held)) return;
+    try {
+        fs.rmdirSync(dir);
+    } catch (error) {
+        if (error?.code !== 'ENOENT') throw error;
+    }
+}
+
+export function reclaimStaleLock(lockDir, observed) {
+    const reclaimDir = `${lockDir}.reclaim`;
+    try {
+        fs.mkdirSync(reclaimDir);
+    } catch (error) {
+        if (error?.code !== 'EEXIST') throw error;
+        const reclaimer = lockIdentity(reclaimDir);
+        if (isStaleLock(reclaimer)) releaseLock(reclaimDir, reclaimer);
+        return false;
+    }
+    const reclaiming = lockIdentity(reclaimDir);
+    try {
+        const current = lockIdentity(lockDir);
+        if (!(sameLock(current, observed) && isStaleLock(current))) return false;
+        try {
+            fs.rmdirSync(lockDir);
+        } catch (error) {
+            // Already gone: the caller retries mkdir, which has a single winner.
+            if (error?.code !== 'ENOENT') throw error;
+        }
+        return true;
+    } finally {
+        releaseLock(reclaimDir, reclaiming);
+    }
+}
+
+export function withLock(file, fn) {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const lockDir = `${file}.lock`;
     const deadline = Date.now() + LOCK_TIMEOUT_MS;
@@ -116,21 +176,16 @@ function withLock(file, fn) {
         } catch (error) {
             if (error?.code !== 'EEXIST') throw error;
         }
-        try {
-            if (Date.now() - fs.statSync(lockDir).mtimeMs > LOCK_STALE_MS) {
-                fs.rmSync(lockDir, { recursive: true, force: true });
-                continue;
-            }
-        } catch {
-            continue;
-        }
+        const observed = lockIdentity(lockDir);
+        if (isStaleLock(observed) && reclaimStaleLock(lockDir, observed)) continue;
         if (Date.now() > deadline) throw new Error(`timed out waiting for the state lock ${lockDir}`);
-        sleepSync(LOCK_RETRY_MS);
+        if (observed !== null) sleepSync(LOCK_RETRY_MS);
     }
+    const held = lockIdentity(lockDir);
     try {
         return fn();
     } finally {
-        fs.rmSync(lockDir, { recursive: true, force: true });
+        releaseLock(lockDir, held);
     }
 }
 

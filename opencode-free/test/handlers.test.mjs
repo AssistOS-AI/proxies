@@ -705,3 +705,33 @@ test('models: an empty stdin is fine', async (t) => {
     assert.equal(result.code, 0);
     assert.equal(JSON.parse(result.stdout).data.length, 7);
 });
+
+// --- a latch that cannot be persisted ------------------------------------------
+
+test('an unwritable state directory: the dropped trip latch is logged and the envelope is still last', {
+    skip: process.getuid?.() === 0 ? 'root ignores directory permissions' : false,
+}, async (t) => {
+    const holder = fs.mkdtempSync(path.join(os.tmpdir(), 'ocf-rostate-'));
+    const dataDir = path.join(holder, 'data');
+    const stateFile = path.join(dataDir, 'service-state.json');
+    writeStateFile(stateFile, 'verified');
+    fs.chmodSync(dataDir, 0o500);
+    t.after(() => {
+        try {
+            fs.chmodSync(dataDir, 0o700);
+        } catch {
+            // the directory is already gone or already writable
+        }
+        fs.rmSync(holder, { recursive: true, force: true });
+    });
+    const agent = setupAgent(t, { mode: 'replay:tool-completed' });
+    const result = await runChat(agent, chatRequest({ stream: true }), { OPENCODE_FREE_STATE_FILE: stateFile });
+    assert.equal(result.code, 1);
+    const envelope = stderrEnvelope(result);
+    assert.equal(envelope.status, 502);
+    assert.equal(envelope.type, 'confinement_rejected');
+    const dropped = result.stderr.split('\n').find((line) => line.includes('service state latch not persisted'));
+    assert.ok(dropped, `the dropped latch is logged: ${result.stderr}`);
+    assert.match(dropped, /state=tripped/);
+    assert.equal(readState(stateFile).state, 'verified', 'the documented fail-open: the latch never reached the file');
+});

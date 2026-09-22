@@ -47,7 +47,11 @@ function parsePayload(raw) {
     }
 }
 
+// A latch that cannot be persisted is a fail-open: the state file keeps the
+// old value and the next request spawns the CLI again, so the drop gets its
+// own greppable line naming the latch that was lost.
 function applyStateEffect(stateFile, outcome, model) {
+    const latch = outcome.stateEffect === 'disable-model' ? `disabled-model:${model}` : outcome.stateEffect;
     try {
         if (outcome.stateEffect === 'tripped') {
             applyTransition(stateFile, 'tripped', { reason: outcome.message }, { role: 'handler' });
@@ -60,7 +64,7 @@ function applyStateEffect(stateFile, outcome, model) {
             log(`model disabled until restart: ${model}`);
         }
     } catch (error) {
-        log(`service state update failed: ${error?.code || error?.message || error}`);
+        log(`service state latch not persisted: state=${latch} file=${stateFile} error=${error?.code || error?.message || error}`);
     }
 }
 
