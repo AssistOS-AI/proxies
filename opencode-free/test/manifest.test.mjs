@@ -59,8 +59,9 @@ test('readiness, storage, startup and profile settings', () => {
 });
 
 test('startup.sh starts AgentServer in the background and the probe loop', () => {
-    assert.ok(STARTUP.includes('/Agent/server/AgentServer.sh &'));
-    assert.ok(STARTUP.includes('service-probe-loop.mjs'));
+    assert.ok(STARTUP.includes('AGENT_SERVER="${OPENCODE_FREE_AGENT_SERVER:-/Agent/server/AgentServer.sh}"'));
+    assert.ok(STARTUP.includes('sh "${AGENT_SERVER}" &'));
+    assert.ok(STARTUP.includes('/code/scripts/service-probe-loop.mjs'));
 });
 
 test('readiness.sh checks the chat agent and the source contract without the key', () => {

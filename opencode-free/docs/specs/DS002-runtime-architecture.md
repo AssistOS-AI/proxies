@@ -19,7 +19,7 @@ The manifest must pin `docker.io/assistos/opencode-free-agent` by digest. The im
 
 ### Startup
 
-`startup.sh` must create the writable-layer directories, start AgentServer on the Ploinky agent port (7000 by default), start `scripts/service-probe-loop.mjs` in the background, forward `TERM` and `INT` to both, and exit when either AgentServer or the probe loop exits, so that Ploinky restarts the container instead of leaving the service state without an owner.
+`startup.sh` must create the writable-layer directories, start AgentServer on the Ploinky agent port (7000 by default), start `scripts/service-probe-loop.mjs` in the background, forward `TERM` and `INT` to both, and exit with 1 when either AgentServer or the probe loop exits on its own, so that Ploinky restarts the container instead of leaving the service state without an owner. A requested stop (`TERM` or `INT`, which Ploinky's managed restart sends) must end with AgentServer's own exit status, 0 on a clean shutdown, because the managed drain accepts only exit code 0.
 
 ### Readiness
 

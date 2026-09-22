@@ -12,3 +12,4 @@ import './test/response.test.mjs';
 import './test/service-probe-loop.test.mjs';
 import './test/service-state.test.mjs';
 import './test/slots.test.mjs';
+import './test/startup.test.mjs';
