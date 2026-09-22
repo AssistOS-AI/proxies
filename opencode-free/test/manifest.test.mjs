@@ -6,7 +6,7 @@ import { DEFAULT_CLI_DEADLINE_MS, DEFAULT_SLOT_WAIT_MS } from '../lib/constants.
 
 // Packet 6 replaces null with the published multi-architecture index digest
 // ("sha256:<64 hex>"); this is the only place the digest is written in this file.
-const PUBLISHED_INDEX_DIGEST = null;
+const PUBLISHED_INDEX_DIGEST = 'sha256:b56aa886c1d47fa0cfdc5fbd9b15bd0d26d135ed8b879842baa433cc6923f1c5';
 
 const MANIFEST = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
 const STARTUP = fs.readFileSync(new URL('../startup.sh', import.meta.url), 'utf8');

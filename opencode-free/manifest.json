@@ -1,5 +1,5 @@
 {
-  "container": "docker.io/assistos/opencode-free-agent@sha256:0000000000000000000000000000000000000000000000000000000000000000",
+  "container": "docker.io/assistos/opencode-free-agent@sha256:b56aa886c1d47fa0cfdc5fbd9b15bd0d26d135ed8b879842baa433cc6923f1c5",
   "about": "OpenCode free models through the unmodified OpenCode CLI, exposed as OpenAI chat completions for the local Soul Gateway.",
   "agent": "bash /code/startup.sh",
   "readiness": {
