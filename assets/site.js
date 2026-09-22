@@ -1,11 +1,12 @@
 const agents = [
     ['Soul Gateway', 'soul-gateway/docs/index.html', 'soul-gateway'],
     ['SearchAgent', 'searchAgent/docs/index.html', 'searchAgent'],
+    ['OpenCode Free', 'opencode-free/docs/index.html', 'opencode-free'],
 ];
 
 function repositoryRoot() {
     const url = new URL(window.location.href);
-    const markers = ['/searchAgent/docs/', '/soul-gateway/docs/'];
+    const markers = ['/searchAgent/docs/', '/soul-gateway/docs/', '/opencode-free/docs/'];
     for (const marker of markers) {
         const index = url.pathname.indexOf(marker);
         if (index >= 0) {
@@ -72,6 +73,13 @@ function documentationItems(root, agent) {
             ['SearchAgent Home', link(root, 'searchAgent/docs/index.html')],
             ['Specifications', link(root, 'searchAgent/docs/specsLoader.html?spec=matrix.md')],
             ['Wiki', link(root, 'searchAgent/docs/wiki.html')],
+        ];
+    }
+    if (agent === 'opencode-free') {
+        return [
+            ['OpenCode Free Home', link(root, 'opencode-free/docs/index.html')],
+            ['Specifications', link(root, 'opencode-free/docs/specsLoader.html?spec=matrix.md')],
+            ['Wiki', link(root, 'opencode-free/docs/wiki.html')],
         ];
     }
     if (agent === 'soul-gateway') {

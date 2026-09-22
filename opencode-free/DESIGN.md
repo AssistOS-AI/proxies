@@ -1,6 +1,6 @@
 # OpenCode free upstream agent: design notes
 
-**Status: not built and not enabled.** This directory holds no agent: it has no `manifest.json`, so Ploinky cannot enable it, and no Explorer or Soul Gateway configuration refers to it. These notes preserve the verified facts and the open decision from the feasibility work of 21 September 2026 so that a later implementation starts from evidence rather than from assumptions.
+**Status: built.** The agent is described in [docs/index.html](docs/index.html) and its authoritative contracts are indexed in [docs/specs/matrix.md](docs/specs/matrix.md). The notes below are the verified facts and prohibitions from the feasibility work of 21 September 2026 that the build rests on; the open decision recorded at the end was taken as "tools defined but never executable".
 
 ## Objective
 
