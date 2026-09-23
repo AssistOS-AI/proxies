@@ -9,6 +9,7 @@ import { BUNDLED_OPENCODE_FREE_KEY, resolveOpencodeApiKey } from '../lib/credent
 const AGENT_DIR = fileURLToPath(new URL('..', import.meta.url));
 const REPOSITORY_ROOT = path.dirname(path.resolve(AGENT_DIR));
 const SKIPPED_DIRS = new Set(['.git', 'node_modules']);
+const OPENCODE_KEY_PATTERN = /oc_sk_[0-9a-f]{12}_[A-Za-z0-9]{32}/;
 
 function* walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -20,20 +21,24 @@ function* walk(dir) {
     }
 }
 
-test('the bundled key appears by value in exactly one file of the repository', () => {
-    assert.equal(typeof BUNDLED_OPENCODE_FREE_KEY, 'string');
-    assert.ok(BUNDLED_OPENCODE_FREE_KEY.length >= 16, 'the bundled key constant is too short to scan for');
+test('the bundled key unmasks to a well-formed OpenCode key', () => {
+    assert.match(BUNDLED_OPENCODE_FREE_KEY, new RegExp(`^${OPENCODE_KEY_PATTERN.source}$`));
+});
+
+test('no repository file contains the bundled key or any other OpenCode key in plain text', () => {
     const needle = Buffer.from(BUNDLED_OPENCODE_FREE_KEY, 'utf8');
     const hits = [];
     let scanned = 0;
     for (const file of walk(REPOSITORY_ROOT)) {
         scanned += 1;
-        if (fs.readFileSync(file).includes(needle)) hits.push(path.relative(REPOSITORY_ROOT, file));
+        const bytes = fs.readFileSync(file);
+        if (bytes.includes(needle) || OPENCODE_KEY_PATTERN.test(bytes.toString('latin1'))) {
+            hits.push(path.relative(REPOSITORY_ROOT, file));
+        }
     }
-    console.log(`credential scan: ${scanned} files scanned, ${hits.length} file(s) contain the bundled key`);
+    console.log(`credential scan: ${scanned} files scanned, ${hits.length} file(s) contain a plaintext OpenCode key`);
     assert.ok(scanned > 0);
-    assert.equal(hits.length, 1, `expected exactly 1 file with the bundled key, found ${hits.length}`);
-    assert.equal(hits[0], path.join('opencode-free', 'lib', 'credential.mjs'), 'the bundled key is outside lib/credential.mjs');
+    assert.deepEqual(hits, [], `plaintext OpenCode key found in: ${hits.join(', ')}`);
 });
 
 test('a non-empty OPENCODE_FREE_API_KEY overrides the bundled key', () => {
