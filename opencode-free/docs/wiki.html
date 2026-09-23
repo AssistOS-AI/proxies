@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenCode Free Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+  <script src="partials-loader.js" defer></script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page"><article class="page__panel">
+    <p class="breadcrumbs"><a href="index.html">OpenCode Free</a> / Wiki</p>
+    <h1>OpenCode Free Documentation</h1>
+    <p class="lead">This page is the canonical source for OpenCode Free terminology used by the HTML documentation and design specifications.</p>
+    <dl>
+      <dt id="definition-opencode-free">OpenCode Free</dt>
+      <dd>OpenCode Free is the Ploinky agent <code>proxies/opencode-free</code> that serves OpenCode's zero-cost models as plain-text OpenAI chat models for Soul Gateway. It owns request validation, prompt flattening, the per-request CLI run, confinement, the service state and the model allow-list. It does not implement OpenCode's protocol, offer tool calling or vision, or choose a model for the caller.</dd>
+      <dt id="definition-opencode-cli">OpenCode CLI</dt>
+      <dd>The OpenCode CLI is OpenCode's official command-line client, version 1.18.31, installed unmodified in the agent image from the GitHub release tarball whose SHA-256 is pinned. It is the only program that contacts OpenCode's service. The agent runs it non-interactively with <code>run --pure --format json</code>, the prompt on standard input, and a throwaway home, data, state, cache, temporary and working directory per request.</dd>
+      <dt id="definition-agentserver">AgentServer</dt>
+      <dd>AgentServer is the Ploinky runtime process that serves the agent's HTTP port. It runs the command handlers declared in <code>manifest.json</code> for Chat Completions and Models requests, passes them the request on standard input, and turns a handler's failure envelope into the HTTP status, error type and retry hint the caller receives.</dd>
+      <dt id="definition-confinement">Confinement</dt>
+      <dd>Confinement is the rule that the CLI's built-in tools stay defined in every request, because OpenCode's service refuses free-tier requests without them, but can never run. The baked configuration sets <code>"permission": {"*": "ask"}</code>, the run omits <code>--auto</code> so every permission request is rejected, and the handler fails the request closed on any attempted tool, any unfinished answer or any reported cost. The container is the second layer.</dd>
+      <dt id="definition-service-state">Service state</dt>
+      <dd>The service state is the agent's record, in <code>/data/service-state.json</code>, of whether OpenCode's service answers the agent's request shape at zero cost: <code>unverified</code>, <code>verified</code>, <code>refused</code>, <code>unavailable</code> or <code>tripped</code>. A background probe loop sets it from one live request at container start and from later re-probes; handlers can only raise it to <code>refused</code> or <code>tripped</code>. Chat requests and the model list are served only in <code>verified</code>. Ploinky readiness does not depend on it.</dd>
+      <dt id="definition-allow-list">Allow-list</dt>
+      <dd>The allow-list is the fixed set of seven free model ids, with their context windows and output limits, that the agent serves for the reviewed CLI version. With a key present the CLI would also run priced models, so any model outside the allow-list is rejected before the CLI starts. A model the service reports as not found is disabled until the container restarts.</dd>
+      <dt id="definition-flattened-prompt">Flattened prompt</dt>
+      <dd>The flattened prompt is the single text the agent writes to the CLI's standard input: an optional <code>System instructions:</code> block followed by <code>User:</code> and <code>Assistant:</code> blocks in message order. Flattening loses the role boundaries, the client's system prompt precedence, names, tool history, non-text parts and sampling parameters.</dd>
+    </dl>
+  </article></main>
+  <div data-include="partials/footer.html"></div>
+</body>
+</html>

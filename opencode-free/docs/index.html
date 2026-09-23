@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OpenCode Free Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script>
+  <script src="partials-loader.js" defer></script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page"><article class="page__panel">
+    <p class="breadcrumbs"><a href="../../index.html">Site Home</a> / OpenCode Free</p>
+    <h1>OpenCode Free Documentation</h1>
+
+    <h2>Purpose and interfaces</h2>
+    <p class="lead"><a href="wiki.html#definition-opencode-free">OpenCode Free</a> makes OpenCode's zero-cost models available as plain-text chat models behind the local Soul Gateway. OpenCode serves its free tier only to its own client, so the agent runs the real, unmodified <a href="wiki.html#definition-opencode-cli">OpenCode CLI</a> once per request inside its own container and returns the answer through the OpenAI-compatible <code>/v1/chat/completions</code> and <code>/v1/models</code> handlers of the bundled <a href="wiki.html#definition-agentserver">AgentServer</a>.</p>
+    <p>Soul Gateway finds the agent through the Router's generic OpenAI agent discovery and offers its models as <code>proxies/opencode-free/&lt;model&gt;</code>. Soul Gateway contains no OpenCode-specific code, the agent has no path back to Soul Gateway, and the models join no Soul Gateway tier unless an administrator adds them.</p>
+
+    <h2>What a request can and cannot do</h2>
+    <p>A request carries text-only <code>system</code>, <code>user</code> and <code>assistant</code> messages ending with the user turn, for one of the seven <a href="wiki.html#definition-allow-list">allow-listed models</a>. Tool calling, images and other non-text parts, <code>n</code> other than 1 and structured response formats are rejected with HTTP 400 before the CLI starts, so they cost no quota. Sampling parameters such as <code>temperature</code> and <code>max_tokens</code> are accepted and ignored.</p>
+    <p>The messages are joined into one <a href="wiki.html#definition-flattened-prompt">flattened prompt</a> with <code>System instructions:</code>, <code>User:</code> and <code>Assistant:</code> labels. The CLI returns the answer as one piece, so a streamed reply carries the whole answer in a single content delta after several seconds, preceded by keepalive comments while the CLI works. Each request also carries about 6,200 input tokens of tool definitions that OpenCode's service requires.</p>
+
+    <h2>Confinement</h2>
+    <p>OpenCode's service accepts a free-tier request only when the CLI's thirteen built-in tool definitions are part of it. The agent keeps them defined but never executable: its baked configuration answers every tool with <code>ask</code>, and the non-interactive run rejects every permission request. On top of that, the agent fails the request closed when the model attempted any tool, when the run finished for any reason other than a completed answer, or when any cost was reported, and it never returns text from such a run. A completed tool call or a reported cost also takes the agent out of service until the container restarts.</p>
+
+    <h2>Service state and readiness</h2>
+    <p>Ploinky readiness checks only local facts: AgentServer answers, the CLI binary matches the digest recorded in the image, the configuration is read-only, and the CLI resolves the agent's permission rules without contacting the service. The manifest declares no readiness protocol, so Ploinky runs that script as the readiness gate when the agent is activated and when it is restarted, and re-runs it every few minutes as a runtime probe. Whether OpenCode's service actually answers is kept in a separate <a href="wiki.html#definition-service-state">service state</a>: a background probe sends one short request when the container starts and records <code>verified</code>, <code>refused</code>, <code>unavailable</code> or <code>tripped</code> in <code>/data/service-state.json</code>. Until the state is <code>verified</code>, chat requests are refused with an explained error before any CLI run and the model list is empty; a refused service is probed again after a day, an unavailable one with a back-off of up to an hour.</p>
+
+    <h2>Errors</h2>
+    <p>Every failure carries an HTTP status and a type that Soul Gateway classifies: 400 for invalid requests, 403 when OpenCode refuses the free tier, 404 only when the service reports that a model does not exist, 429 for rate limits and a full concurrency cap, 502 for confinement rejections and CLI failures, 503 while the service is not verified, and 504 when the 90-second CLI deadline passes. A refused or model-not-found request is not retried by Soul Gateway; the others may be.</p>
+
+    <h2>Limits and data use</h2>
+    <p>Each container runs at most two CLI processes at once. The free quota is shared by every installation that uses the bundled key, and it is not measured. Prompts are subject to the free models' data-use terms: free-period data may be used to improve the models, and some models are for trial use only and must not receive personal or confidential data. Do not send confidential prompts to these models.</p>
+
+    <h2>Maintaining the model list</h2>
+    <p>The allow-list is reviewed for one CLI version. When the pinned CLI changes, the maintainer lists the models the official CLI reports for the key with <code>scripts/survey-models.sh</code> and updates the allow-list, the manifest description and <a href="specsLoader.html?spec=DS004-openai-surface-confinement-and-service-state.md">DS004</a> together.</p>
+
+    <h2>Documentation authority</h2>
+    <p>The <a href="wiki.html">wiki</a> is the canonical terminology source. The <a href="specsLoader.html?spec=matrix.md">specification matrix</a> indexes the authoritative contracts. <a href="specsLoader.html?spec=DS001-coding-style.md">DS001</a> governs source layout and tests.</p>
+  </article></main>
+  <div data-include="partials/footer.html"></div>
+</body>
+</html>

@@ -1,0 +1,57 @@
+{
+  "container": "docker.io/assistos/opencode-free-agent@sha256:b56aa886c1d47fa0cfdc5fbd9b15bd0d26d135ed8b879842baa433cc6923f1c5",
+  "about": "OpenCode free models through the unmodified OpenCode CLI, exposed as OpenAI chat completions for the local Soul Gateway.",
+  "agent": "bash /code/startup.sh",
+  "runtime": {
+    "resources": {
+      "persistentStorage": {
+        "key": "opencode-free",
+        "containerPath": "/data"
+      }
+    }
+  },
+  "endpoints": {
+    "agent-card": {
+      "summary": "Plain-text chat through OpenCode's free models.",
+      "description": "Seven zero-cost OpenCode models (big-pickle, ling-3.0-flash-fin-free, mimo-v2.5-free, muse-spark-1.2-contributor-free, muse-spark-1.3-contributor-free, nemotron-3-ultra-free, nemotron-3.5-lightning-free) behind the unmodified OpenCode CLI; no tool calls, no images, one chunk per answer.",
+      "whenToUse": "Plain-text answers where several seconds of latency and a shared free quota are acceptable.",
+      "whenNotToUse": "Tool calling, vision, autocomplete, confidential prompts (free-model data-use terms).",
+      "inputConventions": "OpenAI chat messages with text content only; system, user and assistant roles; the last message is the user turn.",
+      "outputConventions": "One assistant text; streamed replies carry the whole answer in one content delta.",
+      "tags": ["opencode-free", "text-only", "no-tools"]
+    },
+    "chatCompletions": {
+      "command": "/usr/local/bin/node",
+      "args": ["/code/openai-api/chat-completions.mjs"],
+      "cwd": "/code",
+      "timeoutMs": 115000,
+      "supportsStream": true
+    },
+    "models": {
+      "command": "/usr/local/bin/node",
+      "args": ["/code/openai-api/models.mjs"],
+      "cwd": "/code",
+      "timeoutMs": 10000
+    }
+  },
+  "health": {
+    "readiness": {
+      "script": "readiness.sh",
+      "interval": 1,
+      "timeout": 15,
+      "failureThreshold": 60,
+      "successThreshold": 1
+    }
+  },
+  "profiles": {
+    "default": {
+      "env": {
+        "OPENCODE_FREE_API_KEY": {
+          "required": false,
+          "default": "",
+          "description": "Overrides the bundled restricted OpenCode key; empty keeps the bundled key."
+        }
+      }
+    }
+  }
+}

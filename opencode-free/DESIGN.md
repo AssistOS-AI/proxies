@@ -1,6 +1,6 @@
 # OpenCode free upstream agent: design notes
 
-**Status: not built and not enabled.** This directory holds no agent: it has no `manifest.json`, so Ploinky cannot enable it, and no Explorer or Soul Gateway configuration refers to it. These notes preserve the verified facts and the open decision from the feasibility work of 21 September 2026 so that a later implementation starts from evidence rather than from assumptions.
+**Status: built.** The agent is described in [docs/index.html](docs/index.html) and its authoritative contracts are indexed in [docs/specs/matrix.md](docs/specs/matrix.md). The notes below are the verified facts and prohibitions from the feasibility work of 21 September 2026 that the build rests on; the open decision recorded at the end was taken as "tools defined but never executable".
 
 ## Objective
 
@@ -62,4 +62,4 @@ Two generic changes that such an agent needs were made in this release, and neit
 
 ## Residual risks
 
-The acceptance rule was inferred from twelve requests on one day. The free quota is shared and unmeasured, and every request carries about 6,200 tokens of tool definitions. Latency rules out interactive uses such as autocomplete. Prompt flattening from chat messages into one CLI prompt is lossy and unevaluated. The privacy terms of the free models were not checked. No end-to-end path (Router discovery, signed agent calls, Soul Gateway reconciliation) has been run.
+The acceptance rule was inferred from twelve requests on one day, and the built agent's own live set of 22 September 2026 is consistent with it. The free quota is shared and unmeasured, and every request carries about 6,200 tokens of tool definitions. Latency rules out interactive uses such as autocomplete. Prompt flattening from chat messages into one CLI prompt is lossy; its documented losses are listed in [DS004](docs/specsLoader.html?spec=DS004-openai-surface-confinement-and-service-state.md). The free models' data-use terms are stated in [DS000](docs/specsLoader.html?spec=DS000-vision.md), in the agent documentation and in every model row's metadata. The end-to-end path (Router discovery, signed agent calls, Soul Gateway reconciliation, restart) was exercised on a fresh Explorer deployment; the evidence lives outside this repository with the release documents.
