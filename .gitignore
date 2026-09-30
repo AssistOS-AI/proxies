@@ -14,3 +14,13 @@ worktrees/
 .agents/skills/dgskill-build/
 .agents/skills/oskill-build/
 # <<< ploinky default-skills <<<
+
+# Agent skills linked from the workspace skills hub (DocumentationSkills); not versioned here
+/.agents/skills/achilles-specs
+/.agents/skills/detect-main-behaviors
+/.agents/skills/gamp-specs
+/.agents/skills/review-specs
+/.agents/skills/unslop
+/.agents/skills/web-design
+/.agents/skills/article-build
+/.agents/skills/node-coding-style
