@@ -1,1 +1,7 @@
 @import url("../../assets/styles.css");
+
+.documentation-map { width: 100%; border-collapse: separate; border-spacing: .75rem; }
+.documentation-map th, .documentation-map td { border: 0; background: transparent; vertical-align: top; padding: .5rem; }
+.documentation-map a, .documentation-map span { display: block; }
+.documentation-map a { margin-bottom: .25rem; font-weight: 700; }
+@media (max-width: 700px) { .documentation-map { display: block; overflow-x: auto; } }

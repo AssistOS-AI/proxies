@@ -18,6 +18,13 @@
     <p class="lead"><a href="wiki.html#definition-search-agent">SearchAgent</a> lets Ploinky agents and OpenAI-compatible clients run web searches without handling provider-specific request and response formats. A caller selects a provider, submits a query, and receives results with stable <code>title</code>, <code>url</code>, and <code>snippet</code> fields while any useful provider fields remain available.</p>
     <p>The authenticated MCP interface exposes <code>search_agent_search</code>, <code>search_agent_get_settings</code>, and <code>search_agent_update_settings</code>. The bundled <a href="wiki.html#definition-agentserver">AgentServer</a> also exposes <code>/v1/chat/completions</code> and <code>/v1/models</code> for integrations that use an OpenAI-compatible protocol.</p>
 
+<h2>Documentation Map</h2>
+<table class="documentation-map"><thead><tr><th scope="col">Repository</th><th scope="col">Documentation</th></tr></thead><tbody><tr><td><a href="../../index.html">Repository Home</a><span>Agent catalog and repository entry point.</span></td><td><a href="index.html">SearchAgent Home</a><span>Agent purpose, interfaces, and operating boundaries.</span></td></tr>
+<tr><td><a href="../../soul-gateway/docs/index.html">Soul Gateway</a><span>Model routing, request policy, and gateway operations.</span></td><td><a href="specsLoader.html?spec=matrix.md">Specifications</a><span>Normative contracts and source organization.</span></td></tr>
+<tr><td><a href="../../searchAgent/docs/index.html">SearchAgent</a><span>Provider search, normalized results, and readiness.</span></td><td><a href="wiki.html">Wiki</a><span>Canonical project terminology and relationships.</span></td></tr>
+<tr><td><a href="../../opencode-free/docs/index.html">OpenCode Free</a><span>Text chat through confined OpenCode CLI requests.</span></td><td></td></tr></tbody></table>
+<p>Repository connects the agent catalog. In Documentation, begin with SearchAgent Home, use Specifications for contracts, and consult Wiki for terminology.</p>
+
     <h2>Using MCP search</h2>
     <p><code>search_agent_search</code> requires a provider and a non-empty query. <code>maxResults</code> is optional and cannot exceed the persisted service limit.</p>
     <pre><code class="language-json">{
