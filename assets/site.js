@@ -1,30 +1,15 @@
 const agents = [
-    ['Soul Gateway', 'soul-gateway/docs/index.html', 'soul-gateway'],
-    ['SearchAgent', 'searchAgent/docs/index.html', 'searchAgent'],
-    ['OpenCode Free', 'opencode-free/docs/index.html', 'opencode-free'],
+    ['Soul Gateway (AssistOSExplorer)', 'https://github.com/AssistOS-AI/AssistOSExplorer/tree/main/soul-gateway'],
+    ['SearchAgent (legacy-agents)', 'https://github.com/AssistOS-AI/legacy-agents/tree/main/searchAgent'],
+    ['OpenCode Free (legacy-agents)', 'https://github.com/AssistOS-AI/legacy-agents/tree/main/opencode-free'],
 ];
 
 function repositoryRoot() {
     const url = new URL(window.location.href);
-    const markers = ['/searchAgent/docs/', '/soul-gateway/docs/', '/opencode-free/docs/'];
-    for (const marker of markers) {
-        const index = url.pathname.indexOf(marker);
-        if (index >= 0) {
-            url.pathname = `${url.pathname.slice(0, index + 1)}`;
-            url.search = '';
-            url.hash = '';
-            return url;
-        }
-    }
     url.pathname = url.pathname.replace(/[^/]*$/, '');
     url.search = '';
     url.hash = '';
     return url;
-}
-
-function currentAgent() {
-    const path = window.location.pathname;
-    return agents.find(([, , key]) => path.includes(`/${key}/`))?.[2] || 'home';
 }
 
 function link(root, path) {
@@ -67,38 +52,12 @@ function closeMenus({ returnFocus = false } = {}) {
     });
 }
 
-function documentationItems(root, agent) {
-    if (agent === 'searchAgent') {
-        return [
-            ['SearchAgent Home', link(root, 'searchAgent/docs/index.html')],
-            ['Specifications', link(root, 'searchAgent/docs/specsLoader.html?spec=matrix.md')],
-            ['Wiki', link(root, 'searchAgent/docs/wiki.html')],
-        ];
-    }
-    if (agent === 'opencode-free') {
-        return [
-            ['OpenCode Free Home', link(root, 'opencode-free/docs/index.html')],
-            ['Specifications', link(root, 'opencode-free/docs/specsLoader.html?spec=matrix.md')],
-            ['Wiki', link(root, 'opencode-free/docs/wiki.html')],
-        ];
-    }
-    if (agent === 'soul-gateway') {
-        return [
-            ['Soul Gateway Home', link(root, 'soul-gateway/docs/index.html')],
-            ['Specifications', link(root, 'soul-gateway/docs/specsLoader.html?spec=matrix.md')],
-            ['Wiki', link(root, 'soul-gateway/docs/wiki.html')],
-        ];
-    }
-    return [];
-}
-
 function renderHeader() {
     const header = document.querySelector('[data-site-header], header.site-header');
     if (!header || header.dataset.enhanced === 'true') return;
     header.dataset.enhanced = 'true';
     header.className = 'site-header';
     const root = repositoryRoot();
-    const agent = currentAgent();
     const inner = document.createElement('div');
     inner.className = 'header-inner';
     const brand = document.createElement('div');
@@ -109,11 +68,9 @@ function renderHeader() {
     nav.setAttribute('aria-label', 'Primary documentation navigation');
     const repositoryItems = [
         ['Repository Home', link(root, 'index.html')],
-        ...agents.map(([label, path]) => [label, link(root, path)]),
+        ...agents,
     ];
     nav.append(menu('Repository', repositoryItems, window.location.pathname));
-    const documentation = documentationItems(root, agent);
-    if (documentation.length) nav.append(menu('Documentation', documentation, window.location.pathname));
     inner.append(brand, nav);
     header.replaceChildren(inner);
 }
