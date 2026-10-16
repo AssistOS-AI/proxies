@@ -1,2 +1,0 @@
-#!/bin/sh
-exec "${FAKE_OPENCODE_NODE:-node}" "$(dirname "$0")/../fake-opencode.mjs" "$@"
