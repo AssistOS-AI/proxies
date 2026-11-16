@@ -1,6 +1,6 @@
 # Repository Instructions
 
-This repository contains proxy and gateway deployment material (`deploy/`, the cliProxy, Kiro and Copilot gateway workflows) and a small documentation shell (`index.html`, `assets/`). It no longer contains any agent.
+This repository contains proxy and gateway deployment material (`deploy/`, the cliProxy, Kiro and Copilot gateway workflows) and a small documentation shell (`index.html`, `assets/`). The local `opencode-free/` agent has been restored with its persistent-home migration.
 
 Agents that used to live here moved on the `agent-repo-split` branch:
 
@@ -10,7 +10,7 @@ Agents that used to live here moved on the `agent-repo-split` branch:
 | `searchAgent` | `AssistOS-AI/legacy-agents`, directory `searchAgent/` | `legacy-agents/searchAgent` |
 | `opencode-free` | `AssistOS-AI/legacy-agents`, directory `opencode-free/` | `legacy-agents/opencode-free` |
 
-Work on those agents, including their AGENTS.md and docs, happens in the new repositories. Their git history was preserved there.
+The upstream move preserved agent history in those repositories. This checkout also retains `opencode-free/` at the user's request; its state lives at `/root/service-state.json` through Ploinky's automatic persistent home.
 
 Key invariant:
 

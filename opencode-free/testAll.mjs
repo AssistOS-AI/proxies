@@ -1,0 +1,17 @@
+import './test/agentserver-contract.test.mjs';
+import './test/allow-list.test.mjs';
+import './test/chain-soul.test.mjs';
+import './test/cli-runner.test.mjs';
+import './test/credential-scan.test.mjs';
+import './test/events.test.mjs';
+import './test/handlers.test.mjs';
+import './test/live-assertions.test.mjs';
+import './test/live-confinement.test.mjs';
+import './test/manifest.test.mjs';
+import './test/readiness.test.mjs';
+import './test/request.test.mjs';
+import './test/response.test.mjs';
+import './test/service-probe-loop.test.mjs';
+import './test/service-state.test.mjs';
+import './test/slots.test.mjs';
+import './test/startup.test.mjs';

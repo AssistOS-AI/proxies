@@ -24,4 +24,5 @@ worktrees/
 /.agents/skills/web-design
 /.agents/skills/article-build
 /.agents/skills/node-coding-style
+.agents
 .DS_Store
